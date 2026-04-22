@@ -13,6 +13,8 @@ const INK_2 = '#8E8E93';
 const INK_3 = '#C7C7CC';
 const HAIR = '#E5E5EA';
 const BUBBLE_IN = '#E9E9EB';
+const BUBBLE_IN_NAKED = '#ece2cb'; // warm taupe — reads on the message-card surface
+const CARD_CREAM = '#fbf4ea'; // matches ProtocolConversationSection message-card bg (which matches section cream)
 const CHAT_BG = '#FFFFFF';
 const SHEET_BG = '#F2F2F7';
 
@@ -24,7 +26,9 @@ const Mark = ({ size = 18, color = TEAL }) => (
   </svg>
 );
 
-export default function ButterflyConversation() {
+export default function ButterflyConversation({ naked = false, onFirstMessage, onPhaseChange, onElapsed, onReceiptVisibleChange } = {}) {
+  // Backdrop color used by DoneOverlay — warm dim for naked mode, neutral black otherwise
+  const overlayBackdrop = naked ? 'rgba(48,28,10,0.55)' : 'rgba(0,0,0,0.45)';
   const [phase, setPhase] = useState('idle');
   // idle → sheet1 → waiting → replied → sheet3 → sent → outcome → done
   const [messages, setMessages] = useState(initialMessages);
@@ -42,6 +46,23 @@ export default function ButterflyConversation() {
     return () => clearInterval(id);
   }, [startedAt, phase]);
 
+  // Notify parent on every phase change — lets the scene react (bg tone, Jamie's status, etc.)
+  useEffect(() => {
+    onPhaseChange?.(phase);
+  }, [phase, onPhaseChange]);
+
+  // Notify parent of elapsed-timer updates + whether the timer is currently running
+  useEffect(() => {
+    const active = startedAt !== null && phase !== 'done';
+    onElapsed?.(elapsed, active);
+  }, [elapsed, startedAt, phase, onElapsed]);
+
+  // Notify parent when the receipt overlay opens/closes — lets the scene fade Jamie's header
+  // out of the way so the notification/receipt can hold the spotlight
+  useEffect(() => {
+    onReceiptVisibleChange?.(phase === 'done' && receiptVisible);
+  }, [phase, receiptVisible, onReceiptVisibleChange]);
+
   // Auto-scroll the chat to the latest message — iOS Messages behavior
   useEffect(() => {
     if (!scrollRef.current) return;
@@ -58,6 +79,7 @@ export default function ButterflyConversation() {
   };
 
   const sendApproach = () => {
+    onFirstMessage?.();
     setMessages((m) => [
       ...m,
       { from: 'you', text: "Hey — I've noticed you've been quiet this week. You missed both standups. You okay?", ts: 'Now' },
@@ -113,7 +135,28 @@ export default function ButterflyConversation() {
   const dismissReceipt = () => setReceiptVisible(false);
   const reopenReceipt = () => setReceiptVisible(true);
 
-  const reset = () => {
+  // ── Memory Purge (Phase 1 of the Reset Ritual) ─────────────────────────
+  //
+  // Instead of snapping back to the idle state, `reset()` kicks off a choreographed
+  // dissolve: every message breaks apart character-by-character into dust, a muted
+  // "Local memory purged" confirmation fades in at centre while the content evaporates,
+  // and only *after* the animation settles does state actually wipe. This makes the
+  // invisible compliance guarantee (no PII, auto-purge) visually legible.
+  //
+  // Timings are tuned for users who can see the motion; prefers-reduced-motion skips
+  // straight to the instant reset so we don't strand anyone behind an animation.
+  const [dissolving, setDissolving] = useState(false);
+  const [purgeConfirmVisible, setPurgeConfirmVisible] = useState(false);
+  const dissolveTimersRef = useRef([]);
+
+  const clearDissolveTimers = () => {
+    dissolveTimersRef.current.forEach((t) => clearTimeout(t));
+    dissolveTimersRef.current = [];
+  };
+
+  // Instant reset — used under prefers-reduced-motion and as the final wipe at the end
+  // of the dissolve sequence.
+  const instantReset = () => {
     setPhase('idle');
     setMessages(initialMessages);
     setStartedAt(null);
@@ -123,12 +166,47 @@ export default function ButterflyConversation() {
     setReceiptVisible(false);
   };
 
+  const reset = () => {
+    clearDissolveTimers();
+
+    const reduced =
+      typeof window !== 'undefined' &&
+      window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (reduced) {
+      instantReset();
+      return;
+    }
+
+    // Close the receipt immediately so the dissolve can own the stage
+    setReceiptVisible(false);
+    setDissolving(true);
+
+    // 500ms in: fade the purge confirmation in over the dissolving chat (earlier so it's visible before the chat fully evaporates)
+    dissolveTimersRef.current.push(setTimeout(() => setPurgeConfirmVisible(true), 500));
+
+    // 2400ms in: confirmation starts fading out
+    dissolveTimersRef.current.push(setTimeout(() => setPurgeConfirmVisible(false), 2400));
+
+    // 2800ms in: animation is done, the stage is empty — wipe state and un-dissolve
+    dissolveTimersRef.current.push(
+      setTimeout(() => {
+        instantReset();
+        setDissolving(false);
+      }, 2800),
+    );
+  };
+
+  // Clear any in-flight timers on unmount so we don't setState on a dead component
+  useEffect(() => () => clearDissolveTimers(), []);
+
   return (
     <div
       className="w-full flex items-stretch justify-center"
       style={{
-        background: '#EFEFEF',
-        height: '100%',
+        background: naked ? 'transparent' : '#EFEFEF',
+        height: naked ? 'auto' : '100%',
         fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif',
       }}
     >
@@ -137,15 +215,84 @@ export default function ButterflyConversation() {
         @keyframes bf-slidedown { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         @keyframes bf-fade { from { opacity: 0; } to { opacity: 1; } }
         @keyframes bf-bubble-in { from { opacity: 0; transform: translateY(6px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes bf-msg-in-right {
+          0%   { opacity: 0; transform: translate(10px, 14px) scale(0.9); filter: blur(3px); }
+          55%  { opacity: 1; transform: translate(0, 0) scale(1.025); filter: blur(0); }
+          100% { opacity: 1; transform: translate(0, 0) scale(1); }
+        }
+        @keyframes bf-msg-in-left {
+          0%   { opacity: 0; transform: translate(-10px, 14px) scale(0.9); filter: blur(3px); }
+          55%  { opacity: 1; transform: translate(0, 0) scale(1.025); filter: blur(0); }
+          100% { opacity: 1; transform: translate(0, 0) scale(1); }
+        }
+        @keyframes bf-send-pulse {
+          0%   { box-shadow: 0 0 0 0 rgba(10,74,214,0.45); }
+          100% { box-shadow: 0 0 0 18px rgba(10,74,214,0); }
+        }
+        @keyframes bf-caret-blink { 0%,55% { opacity: 1; } 60%,100% { opacity: 0; } }
         @keyframes bf-dot { 0%,60%,100% { opacity: 0.3; } 30% { opacity: 1; } }
+        @keyframes bf-breathe {
+          0%,100% { opacity: 1; transform: scale(1); }
+          50%     { opacity: 0.72; transform: scale(0.992); }
+        }
+        .bf-breathe { animation: bf-breathe 3.2s ease-in-out infinite; }
+        @keyframes bf-credits-roll {
+          0%   { opacity: 0; transform: translateY(36px); }
+          100% { opacity: 1; transform: translateY(0); }
+        }
+        .bf-credits-roll > * { animation: bf-credits-roll 900ms cubic-bezier(0.16,1,0.3,1) both; }
+        .bf-credits-roll > *:nth-child(1) { animation-delay: 300ms; }
+        .bf-credits-roll > *:nth-child(2) { animation-delay: 480ms; }
+        .bf-credits-roll > *:nth-child(3) { animation-delay: 640ms; }
+        .bf-credits-roll > *:nth-child(4) { animation-delay: 780ms; }
+        .bf-credits-roll > *:nth-child(5) { animation-delay: 900ms; }
+        @keyframes bf-dissolve-char {
+          0%   { opacity: 1; transform: translate(0,0) scale(1) rotate(0deg); filter: blur(0); }
+          40%  { opacity: 0.85; transform: translate(calc(var(--bf-dx,0px) * 0.5), -4px) scale(1.08) rotate(calc(var(--bf-dr,0deg) * 0.4)); filter: blur(0.5px); }
+          100% { opacity: 0; transform: translate(var(--bf-dx,0px), 40px) scale(0.4) rotate(var(--bf-dr,0deg)); filter: blur(6px); }
+        }
+        .bf-dissolving .bf-dchar {
+          display: inline-block;
+          animation: bf-dissolve-char 1200ms cubic-bezier(0.55,0,0.4,1) both;
+          will-change: opacity, transform, filter;
+        }
+        .bf-dissolving .bf-bubble-shell {
+          animation: bf-dissolve-bubble 700ms cubic-bezier(0.4,0,0.2,1) 1600ms both;
+        }
+        @keyframes bf-dissolve-bubble {
+          0%   { opacity: 1; transform: scale(1); }
+          100% { opacity: 0; transform: scale(0.92); }
+        }
+        /* Whole chat body visibly drains: desaturates + dims so the "this is being destroyed"
+           feeling is legible even before individual characters finish their particle dissolve. */
+        @keyframes bf-purge-drain {
+          0%   { filter: saturate(1) brightness(1); transform: translateY(0); }
+          60%  { filter: saturate(0.3) brightness(0.96); transform: translateY(-2px); }
+          100% { filter: saturate(0) brightness(0.9); transform: translateY(-6px); opacity: 0; }
+        }
+        .bf-dissolving { animation: bf-purge-drain 2400ms cubic-bezier(0.4,0,0.2,1) both; }
         .bf-bubble { animation: bf-bubble-in 260ms cubic-bezier(0.2,0.9,0.3,1.2) both; }
+        .bf-msg-right { animation: bf-msg-in-right 520ms cubic-bezier(0.2,0.9,0.3,1.15) both; }
+        .bf-msg-left  { animation: bf-msg-in-left  520ms cubic-bezier(0.2,0.9,0.3,1.15) both; }
+        .bf-send-pulse { animation: bf-send-pulse 700ms ease-out both; }
+        .bf-caret { display: inline-block; width: 2px; height: 1em; margin-left: 1px; vertical-align: -2px; background: currentColor; animation: bf-caret-blink 900ms infinite; border-radius: 1px; }
         .bf-sheet  { animation: bf-slideup 340ms cubic-bezier(0.2,0.9,0.3,1) both; }
         .bf-banner { animation: bf-slidedown 400ms cubic-bezier(0.2,0.9,0.3,1) both; }
         .bf-fade   { animation: bf-fade 500ms ease both; }
+        .bf-no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+        .bf-no-scrollbar::-webkit-scrollbar { width: 0; height: 0; display: none; }
       `}</style>
 
-      <div className="relative flex w-full max-w-[430px] flex-col overflow-hidden" style={{ background: CHAT_BG, height: '100%' }}>
+      <div
+        className={`relative flex w-full ${naked ? '' : 'max-w-[430px]'} flex-col overflow-hidden`}
+        style={{
+          background: naked ? 'transparent' : CHAT_BG,
+          height: naked ? 'auto' : '100%',
+          minHeight: naked ? 620 : undefined,
+        }}
+      >
         {/* iOS status bar — time left, signal/wifi/battery right (Dynamic Island occupies the middle via the phone frame) */}
+        {!naked && (
         <div className="relative z-20 flex items-center justify-between px-7 pt-3 pb-1 shrink-0" style={{ color: INK, fontSize: 15 }}>
           <span className="font-semibold tabular-nums" style={{ fontSize: 15, letterSpacing: '-0.01em' }}>9:41</span>
           <div className="flex items-center gap-1.5">
@@ -170,8 +317,10 @@ export default function ButterflyConversation() {
             </svg>
           </div>
         </div>
+        )}
 
-        {/* Messages nav bar — back chevron + avatar+name centered + FaceTime icon right */}
+        {/* Messages nav bar — hidden entirely in naked mode (Jamie's presence lives in the scene wrapper instead) */}
+        {!naked && (
         <div
           className="relative z-10 backdrop-blur-xl shrink-0"
           style={{ background: 'rgb(255, 255, 255)', borderBottom: `0.5px solid ${HAIR}` }}
@@ -181,7 +330,7 @@ export default function ButterflyConversation() {
               <svg width="12" height="19" viewBox="0 0 12 19" fill="none" aria-hidden>
                 <path d="M10 2L2 9.5L10 17" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-              <span className="ml-0.5 text-[10px] font-semibold tabular-nums" style={{ color: IOS_BLUE, background: IOS_BLUE, borderRadius: '999px', color: 'white', padding: '1px 5px', letterSpacing: 0 }}>2</span>
+              <span className="ml-0.5 text-[10px] font-semibold tabular-nums" style={{ background: IOS_BLUE, borderRadius: '999px', color: 'white', padding: '1px 5px', letterSpacing: 0 }}>2</span>
             </button>
             <div className="flex flex-col items-center gap-1">
               <div
@@ -210,14 +359,42 @@ export default function ButterflyConversation() {
             </button>
           </div>
         </div>
+        )}
 
-        {/* Chat body — scrollable, flex-fill so it pushes the compose bar to the bottom */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 pb-[120px] pt-2 min-h-0" style={{ background: CHAT_BG }}>
-          {messages.map((m, i) => <MessageRow key={i} m={m} />)}
+        {/* Chat body — scrollable in framed mode; flows naturally (no scroll) in naked mode.
+            During the memory purge, the `bf-dissolving` class triggers per-character dissolve
+            animations on every text bubble inside. */}
+        <div
+          ref={scrollRef}
+          className={`${
+            naked
+              ? 'px-4 pt-4'
+              : 'flex-1 overflow-y-auto px-3 pt-2 min-h-0 pb-[120px]'
+          } ${dissolving ? 'bf-dissolving' : ''}`}
+          style={{ background: naked ? 'transparent' : CHAT_BG }}
+        >
+          {messages.map((m, i) => (
+            <MessageRow
+              key={i}
+              m={m}
+              naked={naked}
+              isFresh={i >= initialMessages.length}
+              distanceFromEnd={messages.length - 1 - i}
+              dissolving={dissolving}
+            />
+          ))}
         </div>
 
-        {/* Compose bar + suggestion — rendered across all phases (including `done`, which shows a post-protocol action bar) */}
-        <div className="absolute bottom-0 left-0 right-0 z-20" style={{ background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(20px)', borderTop: `0.5px solid ${HAIR}` }}>
+        {/* Compose bar + suggestion — rendered across all phases (including `done`, which shows a post-protocol action bar).
+            In naked mode it flows after the messages instead of anchoring to the bottom. */}
+        <div
+          className={`${naked ? 'relative mt-auto' : 'absolute bottom-0 left-0 right-0'} z-20`}
+          style={
+            naked
+              ? { background: 'transparent', paddingTop: 8 }
+              : { background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(20px)', borderTop: `0.5px solid ${HAIR}` }
+          }
+        >
           {phase === 'idle' && <SuggestionBar label="Open with what you noticed" sublabel="Butterfly · Step 1 Approach" onTap={openApproachSheet} />}
           {phase === 'replied' && <SuggestionBar label="Offer one specific resource" sublabel="Butterfly · Step 3 Route" onTap={openRouteSheet} />}
           {phase === 'outcome' && <OutcomeBar onAccept={() => logOutcome(true)} onDecline={() => logOutcome(false)} />}
@@ -227,8 +404,9 @@ export default function ButterflyConversation() {
           <div className="pb-5" />
         </div>
 
-        {/* Live-activity timer pill — below nav bar, right side. Appears after first tap. */}
-        {startedAt !== null && phase !== 'done' && (
+        {/* Live-activity timer pill — only shown in framed mode; in naked mode the timer is
+            rendered in the scene's Jamie header for consistent placement. */}
+        {!naked && startedAt !== null && phase !== 'done' && (
           <div className="absolute right-3 top-[102px] z-30 bf-fade">
             <div
               className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] tabular-nums"
@@ -308,11 +486,75 @@ export default function ButterflyConversation() {
             accepted={accepted}
             onReset={reset}
             onDismiss={dismissReceipt}
+            backdropColor={overlayBackdrop}
+            naked={naked}
           />
+        )}
+
+        {/* Purge confirmation — fades in over the dissolving chat during the reset ritual.
+            role=status + aria-live so assistive tech announces the purge even when motion is reduced. */}
+        {dissolving && (
+          <div
+            className="pointer-events-none absolute inset-0 z-60 flex items-center justify-center"
+            aria-hidden={!purgeConfirmVisible}
+          >
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex flex-col items-center gap-2 px-6 py-5 rounded-2xl"
+              style={{
+                background: naked ? 'rgba(251,244,234,0.95)' : 'rgba(255,255,255,0.96)',
+                backdropFilter: 'blur(16px)',
+                border: '1px solid rgba(180,150,100,0.30)',
+                boxShadow: naked
+                  ? '0 10px 40px -10px rgba(90,60,30,0.35), 0 0 0 4px rgba(16,185,129,0.08)'
+                  : '0 10px 40px -10px rgba(0,0,0,0.25)',
+                opacity: purgeConfirmVisible ? 1 : 0,
+                transform: purgeConfirmVisible ? 'scale(1) translateY(0)' : 'scale(0.92) translateY(8px)',
+                transition: 'opacity 500ms ease, transform 500ms cubic-bezier(0.2,0.9,0.3,1.15)',
+                minWidth: 280,
+              }}
+            >
+              <div
+                className="flex h-10 w-10 items-center justify-center rounded-full"
+                style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.35)' }}
+              >
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden>
+                  <path d="M3 9 L7.5 13.5 L15 5" stroke="#059669" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+              <div className="flex items-center gap-2 text-[13px] font-bold tracking-wider uppercase" style={{ color: naked ? 'rgba(60,40,20,0.92)' : INK, letterSpacing: '0.12em' }}>
+                Local memory purged
+              </div>
+              <div className="text-[11.5px] text-center" style={{ color: naked ? 'rgba(100,75,45,0.72)' : INK_2, letterSpacing: '0.02em' }}>
+                Session closed · no traces kept · hash sealed
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>
   );
+}
+
+// Render a string as per-character spans with a staggered dissolve animation —
+// only animates when the surrounding container has `.bf-dissolving`. In all other
+// states this is just transparent markup that behaves like normal text.
+function DissolveText({ text }) {
+  // Fixed horizontal drift seeded off the char index so layout is stable across renders.
+  return text.split('').map((ch, i) => {
+    const dx = ((i * 37) % 19) - 9; // deterministic -9..+9 px horizontal drift
+    const dr = (((i * 29) % 21) - 10) * 1.6; // deterministic -16°..+16° rotation
+    return (
+      <span
+        key={i}
+        className="bf-dchar"
+        style={{ animationDelay: `${i * 3}ms`, '--bf-dx': `${dx}px`, '--bf-dr': `${dr}deg` }}
+      >
+        {ch === ' ' ? ' ' : ch}
+      </span>
+    );
+  });
 }
 
 // ─────────────────────────── helpers ───────────────────────────
@@ -332,48 +574,75 @@ const resources = [
   { key: 'counselor', title: 'Dr. Kim', sub: 'On-site · Wed & Fri', badge: 'On-site', msg: "also — Dr. Kim does on-site hours Wed & Fri, totally confidential. you can just walk in." },
 ];
 
-function MessageRow({ m }) {
+function MessageRow({ m, naked = false, isFresh = false, distanceFromEnd = 0, dissolving = false }) {
+  // Focus Mode — in naked scene, older messages fade so the eye stays on the "living" exchange.
+  // Typing indicators always show full opacity (they're ephemeral).
+  const focusOpacity =
+    !naked || m.from === 'typing'
+      ? 1
+      : distanceFromEnd <= 1
+        ? 1
+        : distanceFromEnd === 2
+          ? 0.7
+          : distanceFromEnd === 3
+            ? 0.45
+            : 0.28;
+  const focusStyle = { opacity: focusOpacity, transition: 'opacity 700ms ease' };
+
   if (m.kind === 'date') {
-    return <div className="bf-fade my-3 text-center text-[11px] font-semibold" style={{ color: INK_2, letterSpacing: '0.02em' }}>{m.text}</div>;
+    return <div className="bf-fade my-3 text-center text-[11px] font-semibold" style={{ ...focusStyle, color: naked ? 'rgba(90,60,30,0.7)' : INK_2, letterSpacing: '0.02em' }}>{m.text}</div>;
   }
   if (m.kind === 'system') {
-    return <div className="bf-fade mx-auto my-2 max-w-[85%] rounded-md px-3 py-1 text-center text-[10.5px]" style={{ background: '#F5F5F7', color: INK_2 }}>{m.text}</div>;
+    const sysBg = naked ? 'rgba(120,80,40,0.08)' : '#F5F5F7';
+    const sysColor = naked ? 'rgba(90,60,30,0.75)' : INK_2;
+    return <div className="bf-fade mx-auto my-2 max-w-[85%] rounded-md px-3 py-1 text-center text-[10.5px] italic" style={{ ...focusStyle, background: sysBg, color: sysColor }}>{m.text}</div>;
   }
   if (m.from === 'typing') {
+    const dotBg = naked ? BUBBLE_IN_NAKED : BUBBLE_IN;
+    const dotColor = naked ? 'rgba(90,60,30,0.6)' : INK_2;
     return (
-      <div className="bf-bubble mb-1 flex justify-start">
-        <div className="flex gap-1 rounded-[18px] px-3.5 py-3" style={{ background: BUBBLE_IN }}>
-          <span className="h-1.5 w-1.5 rounded-full" style={{ background: INK_2, animation: 'bf-dot 1.2s infinite' }} />
-          <span className="h-1.5 w-1.5 rounded-full" style={{ background: INK_2, animation: 'bf-dot 1.2s infinite 0.2s' }} />
-          <span className="h-1.5 w-1.5 rounded-full" style={{ background: INK_2, animation: 'bf-dot 1.2s infinite 0.4s' }} />
+      <div className="bf-msg-left mb-1 flex justify-start" style={focusStyle}>
+        <div className="flex gap-1 rounded-[18px] px-3.5 py-3" style={{ background: dotBg }}>
+          <span className="h-1.5 w-1.5 rounded-full" style={{ background: dotColor, animation: 'bf-dot 1.2s infinite' }} />
+          <span className="h-1.5 w-1.5 rounded-full" style={{ background: dotColor, animation: 'bf-dot 1.2s infinite 0.2s' }} />
+          <span className="h-1.5 w-1.5 rounded-full" style={{ background: dotColor, animation: 'bf-dot 1.2s infinite 0.4s' }} />
         </div>
       </div>
     );
   }
   if (m.kind === 'resource') {
     return (
-      <div className="bf-bubble mb-1 flex justify-end">
-        <div className="max-w-[76%] overflow-hidden rounded-[18px]" style={{ background: IOS_BLUE }}>
-          <p className="px-3.5 pt-2.5 text-[15.5px] leading-[1.35] text-white">{m.resource.msg}</p>
+      <div className="bf-msg-right mb-1 flex justify-end" style={focusStyle}>
+        <div
+          className={`bf-bubble-shell max-w-[76%] overflow-hidden rounded-[18px] ${isFresh ? 'bf-send-pulse' : ''}`}
+          style={{ background: IOS_BLUE }}
+        >
+          <p className="px-3.5 pt-2.5 text-[15.5px] leading-[1.35] text-white">
+            {dissolving ? <DissolveText text={m.resource.msg} /> : m.resource.msg}
+          </p>
           <div className="mt-2 flex items-center gap-2 px-3.5 py-2" style={{ background: 'rgba(0,0,0,0.12)' }}>
             <Mark size={12} color="white" />
-            <p className="text-[11.5px] font-medium text-white">{m.resource.title}</p>
+            <p className="text-[11.5px] font-medium text-white">
+              {dissolving ? <DissolveText text={m.resource.title} /> : m.resource.title}
+            </p>
           </div>
         </div>
       </div>
     );
   }
   const isYou = m.from === 'you';
+  const inBg = naked ? BUBBLE_IN_NAKED : BUBBLE_IN;
+  const inColor = naked ? 'rgba(50,30,10,0.92)' : INK;
   return (
-    <div className={`bf-bubble mb-1 flex ${isYou ? 'justify-end' : 'justify-start'}`}>
+    <div className={`${isYou ? 'bf-msg-right' : 'bf-msg-left'} mb-1 flex ${isYou ? 'justify-end' : 'justify-start'}`} style={focusStyle}>
       <div
-        className="max-w-[76%] rounded-[18px] px-3.5 py-2 text-[15.5px] leading-[1.35]"
+        className={`bf-bubble-shell max-w-[76%] rounded-[18px] px-3.5 py-2 text-[15.5px] leading-[1.35] ${isYou && isFresh ? 'bf-send-pulse' : ''}`}
         style={{
-          background: isYou ? IOS_BLUE : BUBBLE_IN,
-          color: isYou ? 'white' : INK,
+          background: isYou ? IOS_BLUE : inBg,
+          color: isYou ? 'white' : inColor,
         }}
       >
-        {m.text}
+        {dissolving ? <DissolveText text={m.text} /> : m.text}
       </div>
     </div>
   );
@@ -382,7 +651,7 @@ function MessageRow({ m }) {
 function SuggestionBar({ label, sublabel, onTap }) {
   return (
     <button onClick={onTap} className="w-full px-3 pt-3 pb-2 text-left transition-transform active:scale-[0.99]">
-      <div className="flex items-center justify-between rounded-2xl px-4 py-3" style={{ background: `${TEAL}12`, border: `1px solid ${TEAL}33` }}>
+      <div className="bf-breathe flex items-center justify-between rounded-2xl px-4 py-3" style={{ background: `${TEAL}12`, border: `1px solid ${TEAL}33` }}>
         <div className="flex items-center gap-2.5">
           <Mark size={16} color={TEAL} />
           <div>
@@ -399,7 +668,7 @@ function SuggestionBar({ label, sublabel, onTap }) {
 function OutcomeBar({ onAccept, onDecline }) {
   return (
     <div className="px-3 pt-3 pb-2">
-      <div className="rounded-2xl p-3" style={{ background: `${TEAL}10`, border: `1px solid ${TEAL}33` }}>
+      <div className="bf-breathe rounded-2xl p-3" style={{ background: `${TEAL}10`, border: `1px solid ${TEAL}33` }}>
         <p className="mb-2.5 text-[11px] font-semibold uppercase" style={{ color: TEAL, letterSpacing: '0.1em' }}>Butterfly · Step 4 Log</p>
         <p className="mb-3 text-[14px]" style={{ color: INK }}>Did Jamie accept the resource?</p>
         <div className="flex gap-2">
@@ -475,9 +744,17 @@ function SheetActions({ children }) { return <div className="px-5 pt-2">{childre
  * Dismissible by: tapping the drag handle, tapping the backdrop, or swiping the sheet down.
  * When `visible` is false the sheet slides down and the backdrop fades out — chat underneath becomes visible.
  */
-function DoneOverlay({ visible, elapsed, route, accepted, onReset, onDismiss }) {
+function DoneOverlay({ visible, elapsed, route, accepted, onReset, onDismiss, backdropColor = 'rgba(0,0,0,0.45)', naked = false }) {
   const [dragY, setDragY] = useState(0);
   const dragRef = useRef({ startY: 0, active: false });
+
+  // Warm palette used when the overlay renders inside the immersive scene
+  const cardBg = naked ? '#fbf4ea' : 'white';
+  const panelBg = naked ? 'rgba(120,80,40,0.06)' : '#F5F5F7';
+  const buttonBg = naked ? 'rgba(120,80,40,0.08)' : '#F5F5F7';
+  const bannerBg = naked ? 'rgba(255,249,235,0.96)' : 'rgba(255,255,255,0.96)';
+  const borderCol = naked ? 'rgba(180,150,100,0.25)' : HAIR;
+  const mutedText = naked ? 'rgba(90,60,30,0.78)' : INK_2;
 
   const handlePointerDown = (e) => {
     dragRef.current.startY = e.clientY;
@@ -505,45 +782,81 @@ function DoneOverlay({ visible, elapsed, route, accepted, onReset, onDismiss }) 
     <div
       className="absolute inset-0 z-50 flex flex-col"
       style={{
-        background: visible ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0)',
+        background: visible ? backdropColor : 'rgba(0,0,0,0)',
         pointerEvents: visible ? 'auto' : 'none',
         transition: 'background-color 340ms cubic-bezier(0.2,0.9,0.3,1)',
       }}
       onClick={onDismiss}
     >
-      {/* iOS-style notification banner — fades with the backdrop */}
+      {/* Notification banner — fades with the backdrop. In naked mode, Jamie's avatar + name
+          IS the notification's subject (so the profile sits inside it rather than floating above
+          a separate floating card). In framed mode, it stays as the classic iOS Butterfly push. */}
       <div
-        className="px-3 pt-2"
+        className={naked ? 'px-4 pt-4' : 'px-3 pt-2'}
         style={{
           opacity: visible ? 1 : 0,
           transform: visible ? 'translateY(0)' : 'translateY(-16px)',
           transition: 'opacity 300ms ease, transform 300ms ease',
         }}
       >
-        <div className="flex items-center gap-3 rounded-2xl p-3" style={{ background: 'rgba(255,255,255,0.96)', backdropFilter: 'blur(24px)' }}>
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ background: TEAL }}>
-            <Mark size={16} color="white" />
-          </div>
-          <div className="flex-1">
-            <div className="flex items-center justify-between">
-              <p className="text-[12px] font-semibold" style={{ color: INK }}>BUTTERFLY</p>
-              <p className="text-[11px]" style={{ color: INK_2 }}>now</p>
+        <div
+          className={`flex items-center rounded-2xl ${naked ? 'gap-3 px-4 py-3' : 'gap-3 p-3'}`}
+          style={{
+            background: bannerBg,
+            backdropFilter: 'blur(24px)',
+            border: naked ? `1px solid ${borderCol}` : 'none',
+            boxShadow: naked ? '0 6px 20px -10px rgba(90,60,30,0.2)' : 'none',
+          }}
+        >
+          {naked ? (
+            <div
+              className="relative flex h-10 w-10 items-center justify-center rounded-full text-[16px] font-semibold text-white shrink-0"
+              style={{
+                background: 'linear-gradient(135deg, #d912bb, #70046e)',
+                boxShadow: '0 4px 12px -4px rgba(112,4,110,0.45), inset 0 1px 0 rgba(255,255,255,0.2)',
+              }}
+            >
+              J
             </div>
-            <p className="text-[13.5px] font-semibold" style={{ color: INK }}>Check-in logged · no names saved</p>
-            <p className="text-[12.5px]" style={{ color: INK_2 }}>Sealed to audit ledger · auto-purges in 90 days</p>
+          ) : (
+            <div className="flex items-center justify-center rounded-lg h-9 w-9" style={{ background: TEAL }}>
+              <Mark size={16} color="white" />
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-3">
+              <p className={`font-semibold ${naked ? 'text-[13px]' : 'text-[12px]'}`} style={{ color: INK }}>
+                {naked ? 'Jamie' : 'BUTTERFLY'}
+              </p>
+              <p className={`shrink-0 ${naked ? 'text-[11px]' : 'text-[11px]'}`} style={{ color: naked ? mutedText : INK_2 }}>
+                {naked ? 'just now · sealed' : 'now'}
+              </p>
+            </div>
+            <p className={`font-semibold truncate ${naked ? 'text-[13px] mt-0.5' : 'text-[13.5px]'}`} style={{ color: INK }}>
+              Check-in logged · no names saved
+            </p>
+            <p className={`truncate ${naked ? 'text-[11.5px]' : 'text-[12.5px]'}`} style={{ color: naked ? mutedText : INK_2 }}>
+              Sealed to audit ledger · auto-purges in 90 days
+            </p>
           </div>
         </div>
       </div>
 
-      {/* Receipt card — slides up from bottom, slides down to dismiss */}
+      {/* Receipt card — slides up from bottom, slides down to dismiss. In naked mode the slide
+          is slower and inner rows stagger in like end-credits, giving a reflective beat. */}
       <div
-        className="mt-auto rounded-t-[20px]"
+        className={`mt-auto rounded-t-[20px] ${naked && visible ? 'bf-credits-roll' : ''}`}
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: 'white',
+          background: cardBg,
           transform: visible ? `translateY(${dragY}px)` : 'translateY(100%)',
-          transition: dragRef.current.active ? 'none' : 'transform 360ms cubic-bezier(0.2,0.9,0.3,1)',
-          boxShadow: '0 -10px 40px -10px rgba(0,0,0,0.12)',
+          transition: dragRef.current.active
+            ? 'none'
+            : naked
+              ? 'transform 1100ms cubic-bezier(0.16,1,0.3,1)'
+              : 'transform 360ms cubic-bezier(0.2,0.9,0.3,1)',
+          boxShadow: naked ? '0 -14px 44px -12px rgba(90,60,30,0.22)' : '0 -10px 40px -10px rgba(0,0,0,0.12)',
+          borderTop: naked ? `1px solid ${borderCol}` : 'none',
           touchAction: 'none',
         }}
       >
@@ -568,21 +881,21 @@ function DoneOverlay({ visible, elapsed, route, accepted, onReset, onDismiss }) 
             <p className="text-[14px]" style={{ color: INK_2 }}>total</p>
           </div>
 
-          <div className="mt-5 rounded-2xl p-4" style={{ background: '#F5F5F7' }}>
+          <div className="mt-5 rounded-2xl p-4" style={{ background: panelBg }}>
             <div className="space-y-2.5 text-[13px]">
               <Row k="Event" v="Check-in completed" />
               <Row k="Routed to" v={route?.title} />
               <Row k="Resource" v={accepted ? 'Accepted' : 'Declined'} />
               <Row k="Hash" v="0x7a3e…b91d" mono color={TEAL} />
             </div>
-            <div className="mt-3.5 space-y-1.5 border-t pt-3" style={{ borderColor: HAIR }}>
+            <div className="mt-3.5 space-y-1.5 border-t pt-3" style={{ borderColor: borderCol }}>
               <Fact>No name recorded</Fact>
               <Fact>No notes, no diagnosis</Fact>
               <Fact>Auto-purges in 90 days</Fact>
             </div>
           </div>
 
-          <div className="mt-3 flex items-center justify-between px-1 text-[11px] font-semibold" style={{ color: INK_2, letterSpacing: '0.02em' }}>
+          <div className="mt-3 flex items-center justify-between px-1 text-[11px] font-semibold" style={{ color: mutedText, letterSpacing: '0.02em' }}>
             <span>COMPLIANT BY DESIGN</span>
             <span style={{ color: INK }}>OSHA · ADA · HIPAA</span>
           </div>
@@ -592,7 +905,7 @@ function DoneOverlay({ visible, elapsed, route, accepted, onReset, onDismiss }) 
           <button
             onClick={(e) => { e.stopPropagation(); onDismiss?.(); }}
             className="flex-1 rounded-2xl py-3.5 text-[15px] font-medium active:scale-[0.98]"
-            style={{ background: '#F5F5F7', color: INK }}
+            style={{ background: buttonBg, color: INK, border: naked ? `1px solid ${borderCol}` : 'none' }}
           >
             Close
           </button>
@@ -604,7 +917,7 @@ function DoneOverlay({ visible, elapsed, route, accepted, onReset, onDismiss }) 
             Run it again
           </button>
         </div>
-        <p className="pb-3 text-center text-[11px]" style={{ color: INK_2 }}>butterfly.one</p>
+        <p className="pb-3 text-center text-[11px]" style={{ color: mutedText }}>butterfly.one</p>
       </div>
     </div>
   );

@@ -143,7 +143,7 @@ export const Navbar = () => {
             animate={{ y: 0 }}
             exit={{ y: -100 }}
             transition={{ duration: 0.4, ease: APPLE_EASE }}
-            className="fixed top-0 left-0 right-0 z-50 h-[56px] border-b border-hair bg-white/80 backdrop-blur-md shadow-sm"
+            className="fixed top-0 left-0 right-0 z-50 h-[56px] border-b border-hair bg-white shadow-sm"
           >
             <div className="container h-full flex items-center justify-between">
               <Link to="/" className="flex items-center gap-2">
