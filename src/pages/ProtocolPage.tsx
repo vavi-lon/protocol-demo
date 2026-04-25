@@ -1,10 +1,8 @@
 import {
   Navbar, Footer, FadeIn, PartnerCTA, Link,
-  Category, ProtocolStepper, Comparison, Legal, Training,
-  Organizations, Check
+  Category, Comparison, Legal, Training,
+  Organizations, Check, ProtocolStepper
 } from '../components/shared';
-// import ProtocolDemos from '../components/ProtocolDemos'; // V4/V5/V6 hidden — only V1 used
-import ProtocolConversationSection from '../components/ProtocolConversationSection';
 
 /** v2: Bridge line at top of page */
 const BridgeLine = () => (
@@ -110,7 +108,6 @@ export default function ProtocolPage() {
         <BridgeLine />
         <Category />
         <ProtocolStepper />
-        <ProtocolConversationSection />
         {/* <ProtocolDemos /> — V4/V5/V6 hidden, only V1 used */}
         <Comparison />
         <Legal />

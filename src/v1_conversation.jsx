@@ -26,7 +26,7 @@ const Mark = ({ size = 18, color = TEAL }) => (
   </svg>
 );
 
-export default function ButterflyConversation({ naked = false, onFirstMessage, onPhaseChange, onElapsed, onReceiptVisibleChange } = {}) {
+export default function ButterflyConversation({ naked = false, onFirstMessage, onPhaseChange, onElapsed, onReceiptVisibleChange, minHeight } = {}) {
   // Backdrop color used by DoneOverlay — warm dim for naked mode, neutral black otherwise
   const overlayBackdrop = naked ? 'rgba(48,28,10,0.55)' : 'rgba(0,0,0,0.45)';
   const [phase, setPhase] = useState('idle');
@@ -281,14 +281,33 @@ export default function ButterflyConversation({ naked = false, onFirstMessage, o
         .bf-fade   { animation: bf-fade 500ms ease both; }
         .bf-no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
         .bf-no-scrollbar::-webkit-scrollbar { width: 0; height: 0; display: none; }
+        /* Warm-toned subtle scrollbar — matches the cream/taupe palette of the scene.
+           Track is transparent, thumb is muted brown that slightly deepens on hover. */
+        .bf-warm-scroll { scrollbar-width: thin; scrollbar-color: rgba(120,90,60,0.22) transparent; }
+        .bf-warm-scroll::-webkit-scrollbar { width: 6px; }
+        .bf-warm-scroll::-webkit-scrollbar-track { background: transparent; }
+        .bf-warm-scroll::-webkit-scrollbar-thumb {
+          background: rgba(120,90,60,0.22);
+          border-radius: 999px;
+          transition: background 200ms ease;
+        }
+        .bf-warm-scroll::-webkit-scrollbar-thumb:hover { background: rgba(120,90,60,0.42); }
       `}</style>
 
       <div
         className={`relative flex w-full ${naked ? '' : 'max-w-[430px]'} flex-col overflow-hidden`}
         style={{
           background: naked ? 'transparent' : CHAT_BG,
-          height: naked ? 'auto' : '100%',
-          minHeight: naked ? 620 : undefined,
+          // When `minHeight` prop is explicitly passed (embedded mode), treat it as
+          // a FIXED height — the chat body inside needs a constrained-height parent
+          // so its `overflow-y-auto` actually engages and scrolls.
+          // When not passed, fall back to the original auto-grow with min 620.
+          height: !naked
+            ? '100%'
+            : minHeight !== undefined
+              ? minHeight
+              : 'auto',
+          minHeight: naked && minHeight === undefined ? 620 : undefined,
         }}
       >
         {/* iOS status bar — time left, signal/wifi/battery right (Dynamic Island occupies the middle via the phone frame) */}
@@ -361,19 +380,26 @@ export default function ButterflyConversation({ naked = false, onFirstMessage, o
         </div>
         )}
 
-        {/* Chat body — scrollable in framed mode; flows naturally (no scroll) in naked mode.
-            During the memory purge, the `bf-dissolving` class triggers per-character dissolve
-            animations on every text bubble inside. */}
+        {/* Chat body — scrollable in both modes. In naked mode the scroll uses a
+            subtle warm-toned scrollbar (`bf-warm-scroll`) that matches the cream
+            palette. During the memory purge, `bf-dissolving` triggers per-character
+            dissolve animations on every text bubble inside. */}
         <div
           ref={scrollRef}
           className={`${
             naked
-              ? 'px-4 pt-4'
+              ? 'flex-1 min-h-0 overflow-y-auto bf-warm-scroll px-4 pt-4'
               : 'flex-1 overflow-y-auto px-3 pt-2 min-h-0 pb-[120px]'
           } ${dissolving ? 'bf-dissolving' : ''}`}
           style={{ background: naked ? 'transparent' : CHAT_BG }}
         >
-          {messages.map((m, i) => (
+          {messages.map((m, i) => {
+            // Stagger only the *initial* messages so they appear sequentially when the
+            // demo first mounts. Anything added after first mount (live messages from
+            // your interactions) animates immediately with no extra delay.
+            const isInitial = i < initialMessages.length;
+            const revealDelay = isInitial ? i * 220 : 0;
+            return (
             <MessageRow
               key={i}
               m={m}
@@ -381,8 +407,10 @@ export default function ButterflyConversation({ naked = false, onFirstMessage, o
               isFresh={i >= initialMessages.length}
               distanceFromEnd={messages.length - 1 - i}
               dissolving={dissolving}
+              revealDelay={revealDelay}
             />
-          ))}
+            );
+          })}
         </div>
 
         {/* Compose bar + suggestion — rendered across all phases (including `done`, which shows a post-protocol action bar).
@@ -574,7 +602,7 @@ const resources = [
   { key: 'counselor', title: 'Dr. Kim', sub: 'On-site · Wed & Fri', badge: 'On-site', msg: "also — Dr. Kim does on-site hours Wed & Fri, totally confidential. you can just walk in." },
 ];
 
-function MessageRow({ m, naked = false, isFresh = false, distanceFromEnd = 0, dissolving = false }) {
+function MessageRow({ m, naked = false, isFresh = false, distanceFromEnd = 0, dissolving = false, revealDelay = 0 }) {
   // Focus Mode — in naked scene, older messages fade so the eye stays on the "living" exchange.
   // Typing indicators always show full opacity (they're ephemeral).
   const focusOpacity =
@@ -587,7 +615,11 @@ function MessageRow({ m, naked = false, isFresh = false, distanceFromEnd = 0, di
           : distanceFromEnd === 3
             ? 0.45
             : 0.28;
-  const focusStyle = { opacity: focusOpacity, transition: 'opacity 700ms ease' };
+  const focusStyle = {
+    opacity: focusOpacity,
+    transition: 'opacity 700ms ease',
+    animationDelay: revealDelay ? `${revealDelay}ms` : undefined,
+  };
 
   if (m.kind === 'date') {
     return <div className="bf-fade my-3 text-center text-[11px] font-semibold" style={{ ...focusStyle, color: naked ? 'rgba(90,60,30,0.7)' : INK_2, letterSpacing: '0.02em' }}>{m.text}</div>;
@@ -874,50 +906,50 @@ function DoneOverlay({ visible, elapsed, route, accepted, onReset, onDismiss, ba
           <span className="h-[5px] w-10 rounded-full transition-colors" style={{ background: dragY > 0 ? TEAL : INK_3 }} />
         </button>
 
-        <div className="px-6 pb-5">
+        <div className={naked ? 'px-5 pb-3' : 'px-6 pb-5'}>
           <p className="text-[11px] font-semibold uppercase" style={{ color: TEAL, letterSpacing: '0.12em' }}>Protocol complete</p>
-          <div className="mt-2 flex items-baseline gap-3">
-            <h2 className="text-[40px] font-semibold leading-none" style={{ color: INK, letterSpacing: '-0.03em' }}>{elapsed.toFixed(1)}s</h2>
+          <div className={`flex items-baseline gap-3 ${naked ? 'mt-1' : 'mt-2'}`}>
+            <h2 className={`${naked ? 'text-[30px]' : 'text-[40px]'} font-semibold leading-none`} style={{ color: INK, letterSpacing: '-0.03em' }}>{elapsed.toFixed(1)}s</h2>
             <p className="text-[14px]" style={{ color: INK_2 }}>total</p>
           </div>
 
-          <div className="mt-5 rounded-2xl p-4" style={{ background: panelBg }}>
-            <div className="space-y-2.5 text-[13px]">
+          <div className={`rounded-2xl ${naked ? 'mt-3 p-3' : 'mt-5 p-4'}`} style={{ background: panelBg }}>
+            <div className={`text-[13px] ${naked ? 'space-y-1.5' : 'space-y-2.5'}`}>
               <Row k="Event" v="Check-in completed" />
               <Row k="Routed to" v={route?.title} />
               <Row k="Resource" v={accepted ? 'Accepted' : 'Declined'} />
               <Row k="Hash" v="0x7a3e…b91d" mono color={TEAL} />
             </div>
-            <div className="mt-3.5 space-y-1.5 border-t pt-3" style={{ borderColor: borderCol }}>
+            <div className={`border-t ${naked ? 'mt-2.5 space-y-1 pt-2' : 'mt-3.5 space-y-1.5 pt-3'}`} style={{ borderColor: borderCol }}>
               <Fact>No name recorded</Fact>
               <Fact>No notes, no diagnosis</Fact>
               <Fact>Auto-purges in 90 days</Fact>
             </div>
           </div>
 
-          <div className="mt-3 flex items-center justify-between px-1 text-[11px] font-semibold" style={{ color: mutedText, letterSpacing: '0.02em' }}>
+          <div className={`flex items-center justify-between px-1 text-[11px] font-semibold ${naked ? 'mt-2' : 'mt-3'}`} style={{ color: mutedText, letterSpacing: '0.02em' }}>
             <span>COMPLIANT BY DESIGN</span>
             <span style={{ color: INK }}>OSHA · ADA · HIPAA</span>
           </div>
         </div>
 
-        <div className="px-5 pb-7 flex gap-2">
+        <div className={`flex gap-2 ${naked ? 'px-5 pb-3' : 'px-5 pb-7'}`}>
           <button
             onClick={(e) => { e.stopPropagation(); onDismiss?.(); }}
-            className="flex-1 rounded-2xl py-3.5 text-[15px] font-medium active:scale-[0.98]"
+            className={`flex-1 rounded-2xl text-[15px] font-medium active:scale-[0.98] ${naked ? 'py-2.5' : 'py-3.5'}`}
             style={{ background: buttonBg, color: INK, border: naked ? `1px solid ${borderCol}` : 'none' }}
           >
             Close
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onReset(); }}
-            className="flex-1 rounded-2xl py-3.5 text-[15px] font-semibold active:scale-[0.98]"
+            className={`flex-1 rounded-2xl text-[15px] font-semibold active:scale-[0.98] ${naked ? 'py-2.5' : 'py-3.5'}`}
             style={{ background: TEAL, color: 'white' }}
           >
             Run it again
           </button>
         </div>
-        <p className="pb-3 text-center text-[11px]" style={{ color: mutedText }}>butterfly.one</p>
+        <p className={`text-center text-[11px] ${naked ? 'pb-2' : 'pb-3'}`} style={{ color: mutedText }}>butterfly.one</p>
       </div>
     </div>
   );

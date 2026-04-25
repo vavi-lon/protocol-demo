@@ -7,8 +7,12 @@ import ButterflyConversation from '../v1_conversation.jsx';
  * /protocol — V1 Conversation, framed as "see the 4 steps play out in a real chat."
  * Phone centered, Step 1+2 on the left, Step 3+4 on the right.
  * Animated dashed connectors link each callout to the phone.
+ *
+ * `embedded` mode: hides the redundant top heading + the 4 step callouts and
+ * tightens the section padding, so this component can be rendered inside the
+ * walkthrough's post-Finish overlay (which has its own header) and fit no-scroll.
  */
-export default function ProtocolConversationSection() {
+export default function ProtocolConversationSection({ embedded = false }: { embedded?: boolean } = {}) {
 
   const [visible, setVisible] = useState(false);
   const [jamieOnline, setJamieOnline] = useState(false);
@@ -45,7 +49,7 @@ export default function ProtocolConversationSection() {
 
   return (
     <section
-      className="relative py-20 md:py-28 overflow-hidden"
+      className={`relative overflow-hidden ${embedded ? 'py-6 md:py-10' : 'py-20 md:py-28'}`}
       style={{
         background:
           'radial-gradient(ellipse 80% 60% at 50% 38%, #fbf4ea 0%, #f1e7d4 45%, #e6d9c2 75%, #d6c6aa 100%)',
@@ -134,7 +138,8 @@ export default function ProtocolConversationSection() {
       </div>
 
       <div className="container relative">
-        {/* Heading */}
+        {/* Heading — hidden in embedded mode (the walkthrough overlay's own header takes over) */}
+        {!embedded && (
         <div className="text-center max-w-[760px] mx-auto mb-14 md:mb-16">
           <FadeIn>
             <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-hair shadow-sm text-ink/80 font-semibold text-[12px] tracking-[0.08em] uppercase mb-5">
@@ -155,11 +160,13 @@ export default function ProtocolConversationSection() {
             </p>
           </FadeIn>
         </div>
+        )}
 
         {/* Phone stage — phone centered, callouts on sides */}
         <div className="relative flex justify-center items-start">
 
-          {/* ── LEFT SIDE: Step 1 (top) + Step 2 (below) ── */}
+          {/* ── LEFT SIDE: Step 1 (top) + Step 2 (below) — hidden in embedded mode ── */}
+          {!embedded && (
           <div
             className="hidden xl:flex flex-col items-end gap-6 absolute text-right"
             style={{
@@ -240,6 +247,7 @@ export default function ProtocolConversationSection() {
               </div>
             </div>
           </div>
+          )}
 
           {/* ── CENTER: Immersive first-person scene — no card, no chrome ── */}
           <div className="relative flex flex-col items-center" style={{ width: 560 }}>
@@ -359,9 +367,12 @@ export default function ProtocolConversationSection() {
                 </div>
               </div>
 
-              {/* The conversation itself */}
+              {/* The conversation itself. In embedded mode, the chat min-height
+                  scales with the viewport so the whole card fits no-scroll on
+                  shorter screens, while still using the full 620px on tall ones. */}
               <ButterflyConversation
                 naked
+                minHeight={embedded ? 'min(720px, calc(100vh - 260px))' : undefined}
                 onFirstMessage={() => setJamieOnline(true)}
                 onPhaseChange={setPhase}
                 onElapsed={(e: number, active: boolean) => {
@@ -395,18 +406,22 @@ export default function ProtocolConversationSection() {
               </div>
             </div>
 
-            {/* Your-turn cue — first-person prompt */}
-            <div className="flex justify-center mt-8">
-              <div className="inline-flex items-center gap-2 text-[12px] font-semibold text-accent tracking-wider uppercase">
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="animate-bounce">
-                  <path d="M7 2 L7 10 M3 6 L7 10 L11 6" stroke="#0A4AD6" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                It's your turn — reach out
+            {/* Your-turn cue — first-person prompt. Hidden in embedded mode (the
+                user is already inside the demo, no longer needs an entry cue). */}
+            {!embedded && (
+              <div className="flex justify-center mt-8">
+                <div className="inline-flex items-center gap-2 text-[12px] font-semibold text-accent tracking-wider uppercase">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="animate-bounce">
+                    <path d="M7 2 L7 10 M3 6 L7 10 L11 6" stroke="#0A4AD6" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  It's your turn — reach out
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
-          {/* ── RIGHT SIDE: Step 3 (top) + Step 4 (below) ── */}
+          {/* ── RIGHT SIDE: Step 3 (top) + Step 4 (below) — hidden in embedded mode ── */}
+          {!embedded && (
           <div
             className="hidden xl:flex flex-col items-start gap-6 absolute"
             style={{
@@ -487,11 +502,13 @@ export default function ProtocolConversationSection() {
               </div>
             </div>
           </div>
+          )}
 
         </div>
 
-        {/* Recent check-ins — quiet proof of scale. Jamie is not your only moment like this;
-            the protocol has run elsewhere, with outcomes you can see at a glance. */}
+        {/* Recent check-ins — quiet proof of scale. Hidden in embedded mode to
+            preserve no-scroll fit inside the walkthrough's post-Finish overlay. */}
+        {!embedded && (
         <FadeIn delay={0.5}>
           <div className="mt-16 flex flex-col items-center">
             <div
@@ -533,6 +550,7 @@ export default function ProtocolConversationSection() {
             </div>
           </div>
         </FadeIn>
+        )}
       </div>
 
       {/* Keyframe animations */}
