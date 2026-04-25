@@ -5,6 +5,7 @@ import { Navbar, Footer, FadeIn, ChevronRight, PageWrapper } from './components/
 // Pages
 import EvidencePage from './pages/EvidencePage';
 import ProtocolPage from './pages/ProtocolPage';
+import ProtocolWalkthroughPage from './pages/ProtocolWalkthroughPage';
 import PartnerPage from './pages/PartnerPage';
 import LaunchPage from './pages/LaunchPage';
 import DeployPage from './pages/DeployPage';
@@ -401,8 +402,11 @@ const App = () => (
   <>
     <ScrollToTop />
     <Routes>
-      {/* Homepage — live with V1 Conversation demo embedded */}
-      <Route path="/" element={<HomePage />} />
+      {/* Root → walkthrough. Users land directly into the cinematic 4-frame intro;
+          other routes are kept reachable by URL but no longer linked from `/`. */}
+      <Route path="/" element={<ProtocolWalkthroughPage />} />
+      <Route path="/protocol/walkthrough" element={<ProtocolWalkthroughPage />} />
+      <Route path="/home" element={<HomePage />} />
       <Route path="/challenge" element={<PageWrapper><ChallengePage /></PageWrapper>} />
       <Route path="/protocol" element={<PageWrapper><ProtocolPage /></PageWrapper>} />
       <Route path="/evidence" element={<PageWrapper><EvidencePage /></PageWrapper>} />
