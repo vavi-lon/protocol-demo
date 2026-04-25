@@ -84,8 +84,8 @@ const FRAMES: FrameDef[] = [
         ],
       },
       { speaker: 'you',    text: 'of course, feel better',                delay: 2400 },
-      { speaker: 'system', text: 'Jamie missed Monday 10am standup',     delay: 3700 },
-      { speaker: 'system', text: 'Jamie missed Thursday 10am standup',   delay: 4500 },
+      { speaker: 'system', text: 'Them missed Monday 10am standup',      delay: 3700 },
+      { speaker: 'system', text: 'Them missed Thursday 10am standup',    delay: 4500 },
     ],
     body: (
       <div className="space-y-4">
