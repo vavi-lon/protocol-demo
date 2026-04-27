@@ -35,6 +35,23 @@ type Bubble = {
   annotations?: string[];
 };
 
+type Variant = {
+  /** Human-readable name for the route — shown in the "Route N of 3 · {label}" caption. */
+  label: string;
+  /** Bubbles unique to this variant — appended to the frame's base bubbles when active. */
+  bubbles: Bubble[];
+  /** Frame 4 only — receipt morphs its "Routed to" + status rows per variant. */
+  receiptRoute?: {
+    routedTo: string;
+    statusLabel: string;
+    statusValue: string;
+  };
+  /** Optional background image override for this variant. When the carousel
+   *  rotates to this variant the FullBleedMedia crossfades to this image.
+   *  Falls back to frame.imagePath if not set or if the file is missing. */
+  imagePath?: string;
+};
+
 type FrameDef = {
   n: number;
   step: 'SEE' | 'STAY' | 'ASK' | 'CONNECT';
@@ -45,6 +62,17 @@ type FrameDef = {
   fallbackGradient: string;
   sceneCaption: string;
   bubbles: Bubble[];
+  /** Optional carousel of branching outcomes (Frames 3 + 4). Each variant cycles
+   *  every ~5s; the active one renders alongside the base bubbles. */
+  variants?: Variant[];
+  /** When true, the variant carousel loops back to V1 after the final variant
+   *  instead of clamping at the last. Used by Frame 4 (no auto-advance to next). */
+  loopVariants?: boolean;
+  /** When true, the carousel cycles variantIndex (driving image swaps) but
+   *  hides all carousel UI: variant-specific bubbles and the "Route N of 3"
+   *  caption are not rendered. Frame's base bubbles render as usual. Used
+   *  by Frames 1 + 2 where only the background image should rotate. */
+  silentVariants?: boolean;
   body: ReactNode;
   /** ms — how long this frame plays before auto-advancing */
   duration: number;
@@ -64,27 +92,27 @@ const FRAMES: FrameDef[] = [
     n: 1,
     step: 'SEE',
     overline: 'STEP 01 · SEE',
-    headline: 'Recognize the signals.',
+    headline: 'Notice without speaking.',
     imagePath: '/images/protocol/frame-01-see.png',
     imageAlt: 'A colleague at her desk, head lowered, withdrawn from the room around her.',
     fallbackGradient: 'linear-gradient(135deg, #2a2c34 0%, #3f4452 50%, #5a6076 100%)',
-    sceneCaption: 'Tuesday, 9:47 AM · The signal',
-    duration: 10500,
+    sceneCaption: 'Tuesday, 9:47 AM · Before any words',
+    duration: 17000,
     bodyPlacement: 'right',
+    loopVariants: true,
+    silentVariants: true,
     bubbles: [
-      {
-        speaker: 'them',
-        text: 'heading out early today, not feeling great',
-        delay: 700,
-        annotations: [
-          'Posture withdraws — shoulders close inward',
-          'Hand on the wall — needs the surface to stand',
-          'Crowd flows past — no one breaks stride',
-        ],
-      },
-      { speaker: 'you',    text: 'of course, feel better',                delay: 2400 },
-      { speaker: 'system', text: 'Them missed Monday 10am standup',      delay: 3700 },
-      { speaker: 'system', text: 'Them missed Thursday 10am standup',    delay: 4500 },
+      { speaker: 'system', text: 'Posture withdraws — shoulders close inward', delay: 700 },
+      { speaker: 'system', text: 'Eyes off-screen for a long beat',            delay: 1700 },
+      { speaker: 'system', text: 'Them missed Monday 10am standup',            delay: 2900 },
+      { speaker: 'system', text: 'Them missed Thursday 10am standup',          delay: 3800 },
+      { speaker: 'system', text: 'Them logged off Tuesday 2:14 PM',            delay: 4700 },
+    ],
+    // Variants exist solely to rotate the background image — no chat overrides,
+    // no caption. Bubbles arrays are intentionally empty.
+    variants: [
+      { label: 'Withdrawal',       imagePath: '/images/protocol/frame-01-see-withdrawal.png',       bubbles: [] },
+      { label: 'Behavioral shift', imagePath: '/images/protocol/frame-01-see-behavioral-shift.png', bubbles: [] },
     ],
     body: (
       <div className="space-y-4">
@@ -113,8 +141,10 @@ const FRAMES: FrameDef[] = [
     imageAlt: 'A manager stands beside a seated colleague who has pressed her hand to her chest — the silent sign.',
     fallbackGradient: 'linear-gradient(135deg, #1f2932 0%, #354253 50%, #4f5d72 100%)',
     sceneCaption: 'Tuesday, 9:48 AM · The first 30 seconds',
-    duration: 11500,
+    duration: 17000,
     bodyPlacement: 'left',
+    loopVariants: true,
+    silentVariants: true,
     bubbles: [
       {
         speaker: 'you',
@@ -127,10 +157,19 @@ const FRAMES: FrameDef[] = [
       },
       {
         speaker: 'them',
-        text: "yeah honestly it's been a rough stretch. family stuff. thanks for asking, means a lot",
-        delay: 2700,
-        annotations: ['Hand to chest — the silent sign'],
+        text: "yeah, just tired. i'm fine.",
+        delay: 3000,
+        annotations: [
+          'Hand to chest — the silent sign',
+          "Words say fine. Body says otherwise. You don't walk away.",
+        ],
       },
+    ],
+    // Variants exist solely to rotate the background image — no chat overrides,
+    // no caption. Bubbles arrays are intentionally empty.
+    variants: [
+      { label: 'Direct check-in', imagePath: '/images/protocol/frame-02-stay-direct.png',      bubbles: [] },
+      { label: 'No pressure',     imagePath: '/images/protocol/frame-02-stay-no-pressure.png', bubbles: [] },
     ],
     body: (
       <div className="space-y-3.5">
@@ -159,25 +198,41 @@ const FRAMES: FrameDef[] = [
     n: 3,
     step: 'ASK',
     overline: 'STEP 03 · ASK',
-    headline: 'Recognize and route.',
+    headline: 'Ask the real question.',
     imagePath: '/images/protocol/frame-03-ask.png',
     imageAlt: 'The manager and colleague speaking face-to-face at the desk — the manager listening, not solving.',
     fallbackGradient: 'linear-gradient(135deg, #1f2630 0%, #364452 50%, #56657a 100%)',
-    sceneCaption: 'Tuesday, 9:49 AM · Listening, not solving',
-    duration: 12000,
+    sceneCaption: 'Tuesday, 9:49 AM · Three answers, three routes',
+    duration: 17000,
     bodyPlacement: 'right',
+    loopVariants: true,
     bubbles: [
       {
         speaker: 'you',
-        text: 'no pressure — but if things ever feel worse, 988 is free, confidential, and 24/7. text or call.',
+        text: 'no pressure — what would help most right now?',
         delay: 700,
-        annotations: ['Open question — "What would help most?"'],
+        annotations: ["Open question — listen, don't evaluate"],
+      },
+    ],
+    variants: [
+      {
+        // First variant uses a longer delay (1500ms) so the base "You" question
+        // lands first on initial frame load. V2/V3 use a short delay (200ms)
+        // because by then You is already onscreen — snappier swap. After the
+        // first full cycle, Frame's `firstCycleDone` flag overrides V1 to a
+        // snappy delay too, so loop-backs don't lag.
+        label: 'Soft retreat',
+        imagePath: '/images/protocol/frame-03-ask-soft-retreat.png',
+        bubbles: [
+          { speaker: 'them', text: "honestly i just need a quiet hour. i'll be ok.", delay: 1500 },
+        ],
       },
       {
-        speaker: 'them',
-        text: 'ok. thank you.',
-        delay: 2700,
-        annotations: ["They answer — route, don't evaluate"],
+        label: 'Wants support',
+        imagePath: '/images/protocol/frame-03-ask-wants-support.png',
+        bubbles: [
+          { speaker: 'them', text: 'i think i need to talk to someone.', delay: 200 },
+        ],
       },
     ],
     body: (
@@ -208,15 +263,36 @@ const FRAMES: FrameDef[] = [
     n: 4,
     step: 'CONNECT',
     overline: 'STEP 04 · CONNECT',
-    headline: 'Close the loop.',
+    headline: 'Close the loop — three ways.',
     imagePath: '/images/protocol/frame-04-connect.png',
     imageAlt: 'The manager stands with the colleague at her desk; a phone is held to make the call. The line is open.',
     fallbackGradient: 'linear-gradient(135deg, #1c2530 0%, #34465c 50%, #5b7090 100%)',
-    sceneCaption: 'Tuesday, 9:51 AM · 988 connected',
-    duration: 12500,
+    sceneCaption: 'Tuesday, 9:51 AM · One protocol, three endings',
+    duration: 17000,
     bodyPlacement: 'left',
     receipt: true,
     bubbles: [],
+    loopVariants: true,
+    variants: [
+      {
+        label: 'Soft retreat',
+        imagePath: '/images/protocol/frame-04-connect-soft-retreat.png',
+        bubbles: [
+          { speaker: 'you',    text: "okay. i'll find you at 2:30 — no pressure.", delay: 200 },
+          { speaker: 'system', text: 'reminder set · 2:30 PM ✓',                   delay: 1500 },
+        ],
+        receiptRoute: { routedTo: 'Self-managed', statusLabel: 'Follow-up', statusValue: '2:30 PM today' },
+      },
+      {
+        label: 'Wants support',
+        imagePath: '/images/protocol/frame-04-connect-wants-support.png',
+        bubbles: [
+          { speaker: 'you',  text: "let's open the resource map together. i'll stay while you pick.", delay: 200 },
+          { speaker: 'them', text: 'ok.',                                                              delay: 2200 },
+        ],
+        receiptRoute: { routedTo: 'Resource Map', statusLabel: 'EAP referral', statusValue: 'Pending' },
+      },
+    ],
     body: (
       <div className="space-y-3.5">
         <p className="text-[13.5px] leading-relaxed text-ink">
@@ -255,44 +331,105 @@ const FRAMES: FrameDef[] = [
 // FULL-BLEED MEDIA — fills entire frame area; image now, video-ready.
 // ──────────────────────────────────────────────────────────────────────────
 
-const FullBleedMedia = ({ frame, revealed }: { frame: FrameDef; revealed: boolean }) => {
+const MASK_GRADIENT = 'radial-gradient(ellipse 92% 96% at 50% 50%, #000 60%, transparent 100%)';
+
+const FullBleedMedia = ({
+  frame,
+  revealed,
+  imagePath,
+}: {
+  frame: FrameDef;
+  revealed: boolean;
+  imagePath: string;
+}) => {
+  // Sequential fade swap: when the requested path changes, the current image
+  // fades to opacity 0 over ~320ms, *then* activePath updates and the new src
+  // begins loading; once it's decoded, onLoad flips imgLoaded back on and
+  // the new image fades from 0 to 1. The two phases never overlap, so the
+  // previous image is fully gone before the new one appears — no lingering,
+  // no hard cut. If a variant image fails to load (file not added yet), we
+  // fall back silently to frame.imagePath.
+  const FADE_MS = 320;
+
+  const [failedPaths, setFailedPaths] = useState<Set<string>>(() => new Set());
+  const targetPath = failedPaths.has(imagePath) ? frame.imagePath : imagePath;
+  const allFailed = failedPaths.has(frame.imagePath);
+
+  const [activePath, setActivePath] = useState(targetPath);
   const [imgLoaded, setImgLoaded] = useState(false);
-  const [imgFailed, setImgFailed] = useState(false);
+
+  // When the requested target diverges from the active path, run the fade-out
+  // (set imgLoaded false → opacity 0), wait for the fade to finish, then
+  // swap activePath so the new src begins loading.
+  useEffect(() => {
+    if (targetPath === activePath) return;
+    setImgLoaded(false);
+    const t = setTimeout(() => setActivePath(targetPath), FADE_MS);
+    return () => clearTimeout(t);
+  }, [targetPath, activePath]);
+
+  const markFailed = (path: string) =>
+    setFailedPaths((prev) => {
+      if (prev.has(path)) return prev;
+      const next = new Set(prev);
+      next.add(path);
+      return next;
+    });
 
   return (
     <div
       className="absolute inset-0 overflow-hidden"
-      style={{ background: imgFailed || !imgLoaded ? frame.fallbackGradient : '#ffffff' }}
+      style={{ background: allFailed || !imgLoaded ? frame.fallbackGradient : '#0b0b10' }}
     >
-      {!imgFailed && (
-        <img
-          src={frame.imagePath}
-          alt={frame.imageAlt}
-          className="absolute inset-0 w-full h-full object-contain"
-          style={{
-            opacity: imgLoaded ? 1 : 0,
-            transform: revealed ? 'scale(1.02)' : 'scale(1)',
-            transition: 'opacity 700ms ease, transform 12000ms cubic-bezier(0.4,0,0.2,1)',
-            // Soft radial feather — center 60% of the image stays fully opaque,
-            // then fades to transparent over the outer ~40%. Hides the hard
-            // rectangular edge so the image blends into the white walkthrough bg.
-            maskImage: 'radial-gradient(ellipse 92% 96% at 50% 50%, #000 60%, transparent 100%)',
-            WebkitMaskImage: 'radial-gradient(ellipse 92% 96% at 50% 50%, #000 60%, transparent 100%)',
-          }}
-          onLoad={() => setImgLoaded(true)}
-          onError={() => setImgFailed(true)}
-        />
+      {!allFailed && (
+        <>
+          {/* Blurred backdrop — second copy of the same image scaled & blurred
+              to fill the entire frame. Eliminates the visible letterbox bands
+              that object-contain leaves on the sides; the foreground image
+              now feathers into its own out-of-focus colour field instead of
+              into white/gray. Browser fetches the src once (cache) so this
+              costs no extra network. */}
+          <img
+            src={activePath}
+            alt=""
+            aria-hidden
+            className="absolute inset-0 w-full h-full object-cover"
+            style={{
+              opacity: imgLoaded ? 1 : 0,
+              filter: 'blur(48px) brightness(0.78) saturate(1.05)',
+              transform: 'scale(1.18)',
+              transition: `opacity ${FADE_MS}ms ease`,
+            }}
+          />
+          {/* Sharp foreground — contained at original aspect ratio with the
+              radial feather, so the focused subject reads cleanly while its
+              edges dissolve into the blurred backdrop. */}
+          <img
+            src={activePath}
+            alt={frame.imageAlt}
+            className="absolute inset-0 w-full h-full object-contain"
+            style={{
+              opacity: imgLoaded ? 1 : 0,
+              transform: revealed ? 'scale(1.02)' : 'scale(1)',
+              transition: `opacity ${FADE_MS}ms ease, transform 12000ms cubic-bezier(0.4,0,0.2,1)`,
+              maskImage: MASK_GRADIENT,
+              WebkitMaskImage: MASK_GRADIENT,
+            }}
+            onLoad={() => setImgLoaded(true)}
+            onError={() => markFailed(activePath)}
+          />
+        </>
       )}
 
-      {/* Asymmetric darkening: stronger on the body-card side so overlay text is legible,
-          lighter on the annotation side so the image still reads. */}
+      {/* Symmetric edge darkening: both sides darker so the chat overlay and
+          the body card both have legible contrast against the now-busier
+          blurred backdrop. The central 30–70% range stays lightly darkened
+          so the focused subject still reads. */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
           background:
-            frame.bodyPlacement === 'right'
-              ? 'linear-gradient(90deg, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0.05) 35%, rgba(0,0,0,0.35) 70%, rgba(0,0,0,0.55) 100%)'
-              : 'linear-gradient(270deg, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0.05) 35%, rgba(0,0,0,0.35) 70%, rgba(0,0,0,0.55) 100%)',
+            'linear-gradient(90deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.18) 30%, rgba(0,0,0,0.18) 70%, rgba(0,0,0,0.55) 100%)',
         }}
       />
       {/* Top + bottom vignette — keeps caption + watermark legible */}
@@ -303,7 +440,7 @@ const FullBleedMedia = ({ frame, revealed }: { frame: FrameDef; revealed: boolea
         }}
       />
 
-      {(imgFailed || !imgLoaded) && (
+      {(allFailed || !imgLoaded) && (
         <div
           className="absolute inset-x-0 bottom-12 px-8 text-center pointer-events-none"
           style={{ opacity: revealed ? 1 : 0, transition: 'opacity 600ms ease 600ms' }}
@@ -352,10 +489,11 @@ const ChatMessage = ({
         <div
           className="rounded-md px-3 py-1 text-center italic"
           style={{
-            background: 'rgba(120,90,60,0.10)',
-            color: 'rgba(80,60,40,0.7)',
+            background: 'rgba(252,246,234,0.94)',
+            color: 'rgba(60,42,22,0.92)',
             fontSize: '0.78rem',
             maxWidth: '92%',
+            boxShadow: '0 4px 14px -8px rgba(0,0,0,0.45)',
           }}
         >
           {b.text}
@@ -382,7 +520,8 @@ const ChatMessage = ({
         className="font-bold uppercase tracking-[0.14em] mb-1.5"
         style={{
           fontSize: '0.7rem',
-          color: 'rgba(80,60,40,0.65)',
+          color: 'rgba(255,248,232,0.92)',
+          textShadow: '0 1px 3px rgba(0,0,0,0.55), 0 0 8px rgba(0,0,0,0.35)',
         }}
       >
         {isYou ? 'You' : 'Them'}
@@ -418,8 +557,9 @@ const ChatMessage = ({
               className="italic"
               style={{
                 fontSize: '0.75rem',
-                color: 'rgba(80,60,40,0.55)',
+                color: 'rgba(255,248,232,0.82)',
                 lineHeight: 1.4,
+                textShadow: '0 1px 3px rgba(0,0,0,0.55), 0 0 8px rgba(0,0,0,0.35)',
               }}
             >
               {a}
@@ -436,9 +576,64 @@ const ChatMessage = ({
 // Positioned on the side opposite the body card (which holds step descriptions).
 // ──────────────────────────────────────────────────────────────────────────
 
-const ChatColumn = ({ frame, revealed }: { frame: FrameDef; revealed: boolean }) => {
+// Renders a variant's bubbles with a fresh reveal each time it mounts, so swapping
+// variants re-triggers the fade-in transition instead of looking static.
+const VariantBubbles = ({ variant, indexOffset = 0 }: { variant: Variant; indexOffset?: number }) => {
+  const [vRevealed, setVRevealed] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setVRevealed(true), 50);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <>
+      {variant.bubbles.map((b, i) => (
+        <ChatMessage key={i} bubble={b} index={indexOffset + i} revealed={vRevealed} />
+      ))}
+    </>
+  );
+};
+
+// "Route N of 3 · Soft retreat" chip — morphs whenever variantIndex changes.
+const RouteCaption = ({
+  variantIndex,
+  total,
+  label,
+}: {
+  variantIndex: number;
+  total: number;
+  label: string;
+}) => (
+  <div
+    key={variantIndex}
+    className="inline-flex items-center gap-2 self-center px-3 py-1.5 rounded-full"
+    style={{
+      background: 'rgba(252,246,234,0.92)',
+      border: '1px solid rgba(180,150,100,0.32)',
+      animation: 'bf-fade-up 500ms cubic-bezier(0.16,1,0.3,1) both',
+    }}
+  >
+    <span className="text-[9.5px] font-bold tracking-[0.14em] uppercase tabular-nums" style={{ color: TEAL }}>
+      Route {variantIndex + 1} of {total}
+    </span>
+    <span className="text-[10px]" style={{ color: 'rgba(80,55,30,0.4)' }}>·</span>
+    <span className="text-[11px] font-semibold text-ink">{label}</span>
+  </div>
+);
+
+const ChatColumn = ({
+  frame,
+  revealed,
+  variantIndex,
+  activeVariant,
+}: {
+  frame: FrameDef;
+  revealed: boolean;
+  variantIndex: number;
+  activeVariant?: Variant;
+}) => {
   // Place chat column on the side opposite the body-card so they don't overlap
   const side: 'left' | 'right' = frame.bodyPlacement === 'right' ? 'left' : 'right';
+  const variants = frame.variants;
 
   return (
     <div
@@ -454,6 +649,20 @@ const ChatColumn = ({ frame, revealed }: { frame: FrameDef; revealed: boolean })
       {frame.bubbles.map((b, i) => (
         <ChatMessage key={i} bubble={b} index={i} revealed={revealed} />
       ))}
+      {activeVariant && !frame.silentVariants && (
+        <VariantBubbles
+          key={variantIndex}
+          variant={activeVariant}
+          indexOffset={frame.bubbles.length}
+        />
+      )}
+      {variants && activeVariant && !frame.silentVariants && (
+        <RouteCaption
+          variantIndex={variantIndex}
+          total={variants.length}
+          label={activeVariant.label}
+        />
+      )}
     </div>
   );
 };
@@ -486,13 +695,31 @@ const ReceiptRow = ({
   </div>
 );
 
-const ReceiptOverlay = ({ revealed, side }: { revealed: boolean; side: 'left' | 'right' }) => {
+const ReceiptOverlay = ({
+  revealed,
+  side,
+  variants,
+  variantIndex,
+  activeVariant,
+}: {
+  revealed: boolean;
+  side: 'left' | 'right';
+  variants?: Variant[];
+  variantIndex: number;
+  activeVariant?: Variant;
+}) => {
   // Position the receipt in the exact same slot the ChatColumn occupies on the
   // other frames — opposite the body card, vertically centred, same horizontal
   // offset and width.
+  const route = activeVariant?.receiptRoute ?? {
+    routedTo: '988 Lifeline',
+    statusLabel: 'Resource',
+    statusValue: 'Accepted',
+  };
+
   return (
     <div
-      className="absolute z-20"
+      className="absolute z-20 flex flex-col items-stretch gap-3"
       style={{
         [side]: 'clamp(24px, 5vw, 72px)',
         top: '50%',
@@ -505,8 +732,17 @@ const ReceiptOverlay = ({ revealed, side }: { revealed: boolean; side: 'left' | 
         transition: 'opacity 700ms ease 900ms, transform 800ms cubic-bezier(0.16,1,0.3,1) 900ms',
       }}
     >
+      {/* Per-variant bubbles render above the receipt — message lands first,
+          then the receipt rows morph ~1.2s later. Mount-keyed so each variant
+          re-triggers a fresh fade-in. */}
+      {activeVariant && activeVariant.bubbles.length > 0 && (
+        <div key={`bubbles-${variantIndex}`} className="flex flex-col gap-2.5">
+          <VariantBubbles variant={activeVariant} />
+        </div>
+      )}
+
       <div
-        className={`rounded-2xl p-5 shadow-2xl ${revealed ? 'bf-receipt-content' : ''}`}
+        className={`rounded-2xl p-5 shadow-2xl w-full ${revealed ? 'bf-receipt-content' : ''}`}
         style={{
           background: 'rgba(252,246,234,0.96)',
           border: '1px solid rgba(180,150,100,0.35)',
@@ -531,10 +767,19 @@ const ReceiptOverlay = ({ revealed, side }: { revealed: boolean; side: 'left' | 
           className="rounded-xl p-3.5 mb-4 space-y-2"
           style={{ background: 'rgba(255,251,240,0.7)', border: '1px solid rgba(180,150,100,0.18)' }}
         >
-          <ReceiptRow label="Event"     value="Check-in completed" />
-          <ReceiptRow label="Routed to" value="988 Lifeline" />
-          <ReceiptRow label="Resource"  value="Accepted" />
-          <ReceiptRow label="Hash"      value="0x7a3e…b91d" mono color={TEAL} />
+          <ReceiptRow label="Event" value="Check-in completed" />
+          {/* Routed-to + status rows morph per variant. Delay 1200ms so the
+              chat bubble above lands first — the message arrives, *then* the
+              receipt updates. */}
+          <div
+            key={`route-${variantIndex}`}
+            className="space-y-2"
+            style={{ animation: 'bf-fade-up 460ms cubic-bezier(0.16,1,0.3,1) 1200ms both' }}
+          >
+            <ReceiptRow label="Routed to" value={route.routedTo} />
+            <ReceiptRow label={route.statusLabel} value={route.statusValue} />
+          </div>
+          <ReceiptRow label="Hash" value="0x7a3e…b91d" mono color={TEAL} />
         </div>
 
         <ul className="space-y-1.5 mb-4 text-[11.5px]" style={{ color: 'rgba(70,50,30,0.85)' }}>
@@ -559,6 +804,14 @@ const ReceiptOverlay = ({ revealed, side }: { revealed: boolean; side: 'left' | 
           <span className="text-[10.5px] font-bold tracking-[0.06em] text-ink">OSHA · ADA · HIPAA</span>
         </div>
       </div>
+
+      {variants && activeVariant && (
+        <RouteCaption
+          variantIndex={variantIndex}
+          total={variants.length}
+          label={activeVariant.label}
+        />
+      )}
     </div>
   );
 };
@@ -567,13 +820,69 @@ const ReceiptOverlay = ({ revealed, side }: { revealed: boolean; side: 'left' | 
 // FRAME — single visible panel: full-bleed image with all overlays on top
 // ──────────────────────────────────────────────────────────────────────────
 
-const Frame = ({ frame, direction }: { frame: FrameDef; direction: 'forward' | 'backward' }) => {
+const Frame = ({
+  frame,
+  direction,
+  paused,
+}: {
+  frame: FrameDef;
+  direction: 'forward' | 'backward';
+  paused: boolean;
+}) => {
   const [revealed, setRevealed] = useState(false);
+  const [variantIndex, setVariantIndex] = useState(0);
+  // True once the carousel has completed one full pass (V_last → V0 wrap).
+  // Used to snappy-up V1's reveal delay on subsequent loops, since by then
+  // the base "You" bubble is already onscreen and doesn't need lead time.
+  const [firstCycleDone, setFirstCycleDone] = useState(false);
+  const variants = frame.variants;
 
   useEffect(() => {
     const t = setTimeout(() => setRevealed(true), 60);
     return () => clearTimeout(t);
   }, []);
+
+  // Variant carousel — steps through routes every ~5s while the frame plays.
+  // Frames with `loopVariants` (Frames 3 + 4) cycle continuously; others
+  // would clamp at the final variant. Frame remounts on entry (key={frame.n}),
+  // so variantIndex + firstCycleDone start fresh each visit.
+  useEffect(() => {
+    if (!variants || variants.length <= 1 || paused) return;
+    const loop = frame.loopVariants;
+    const last = variants.length - 1;
+    const interval = setInterval(() => {
+      setVariantIndex((i) => {
+        const next = loop ? (i + 1) % variants.length : Math.min(i + 1, last);
+        if (loop && i === last && next === 0) {
+          setFirstCycleDone(true);
+        }
+        return next;
+      });
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [variants, paused, frame.loopVariants]);
+
+  // After the first full cycle, override V1's delay so its loop-back is
+  // snappy — but only when the frame has base bubbles that V1 needed to wait
+  // for on first show (Frame 3 ASK). Frames whose variants are self-contained
+  // (Frames 1, 2, 4) keep their natural cinematic delays on every cycle.
+  const baseActiveVariant = variants?.[variantIndex];
+  const hasBaseBubbles = frame.bubbles.length > 0;
+  const activeVariant: Variant | undefined =
+    baseActiveVariant && firstCycleDone && variantIndex === 0 && hasBaseBubbles
+      ? {
+          ...baseActiveVariant,
+          bubbles: baseActiveVariant.bubbles.map((b) => ({
+            ...b,
+            delay: Math.min(b.delay ?? 200, 300),
+          })),
+        }
+      : baseActiveVariant;
+
+  // Background image follows the active variant when one is set; otherwise it
+  // stays on the frame's main image. FullBleedMedia handles the crossfade and
+  // falls back to frame.imagePath if a variant image is missing.
+  const activeImagePath = activeVariant?.imagePath ?? frame.imagePath;
 
   return (
     <div
@@ -592,7 +901,7 @@ const Frame = ({ frame, direction }: { frame: FrameDef; direction: 'forward' | '
           className="relative shrink-0 w-full"
           style={{ height: '38vh', minHeight: 220, background: '#ffffff' }}
         >
-          <FullBleedMedia frame={frame} revealed={revealed} />
+          <FullBleedMedia frame={frame} revealed={revealed} imagePath={activeImagePath} />
           {/* Frame number watermark */}
           <div
             className="absolute top-3 right-3 flex items-center justify-center w-8 h-8 rounded-full bg-white text-ink text-[13px] font-bold tabular-nums shadow border border-hair"
@@ -630,12 +939,44 @@ const Frame = ({ frame, direction }: { frame: FrameDef; direction: 'forward' | '
 
           {/* Chat preview (or receipt for Frame 4) — inline */}
           {frame.receipt ? (
-            <ReceiptInline />
+            <div className="flex flex-col gap-3">
+              {activeVariant && activeVariant.bubbles.length > 0 && (
+                <div key={`bubbles-${variantIndex}`} className="flex flex-col gap-2.5">
+                  <VariantBubbles variant={activeVariant} />
+                </div>
+              )}
+              <ReceiptInline variants={variants} variantIndex={variantIndex} />
+              {variants && activeVariant && (
+                <div className="flex justify-center pt-1">
+                  <RouteCaption
+                    variantIndex={variantIndex}
+                    total={variants.length}
+                    label={activeVariant.label}
+                  />
+                </div>
+              )}
+            </div>
           ) : (
             <div className="flex flex-col gap-3">
               {frame.bubbles.map((b, i) => (
                 <ChatMessage key={i} bubble={b} index={i} revealed={revealed} />
               ))}
+              {activeVariant && !frame.silentVariants && (
+                <VariantBubbles
+                  key={variantIndex}
+                  variant={activeVariant}
+                  indexOffset={frame.bubbles.length}
+                />
+              )}
+              {variants && activeVariant && !frame.silentVariants && (
+                <div className="flex justify-center pt-1">
+                  <RouteCaption
+                    variantIndex={variantIndex}
+                    total={variants.length}
+                    label={activeVariant.label}
+                  />
+                </div>
+              )}
             </div>
           )}
 
@@ -664,16 +1005,24 @@ const Frame = ({ frame, direction }: { frame: FrameDef; direction: 'forward' | '
           watermark and scene caption pinned absolutely. */}
       <div className="hidden md:block absolute inset-0">
         {/* Layer 1 — full-bleed image */}
-        <FullBleedMedia frame={frame} revealed={revealed} />
+        <FullBleedMedia frame={frame} revealed={revealed} imagePath={activeImagePath} />
 
         {/* Layer 2 — chat column (or receipt panel for Frame 4) */}
         {frame.receipt ? (
           <ReceiptOverlay
             revealed={revealed}
             side={frame.bodyPlacement === 'left' ? 'right' : 'left'}
+            variants={variants}
+            variantIndex={variantIndex}
+            activeVariant={activeVariant}
           />
         ) : (
-          <ChatColumn frame={frame} revealed={revealed} />
+          <ChatColumn
+            frame={frame}
+            revealed={revealed}
+            variantIndex={variantIndex}
+            activeVariant={activeVariant}
+          />
         )}
 
         {/* Layer 3 — frame number watermark */}
@@ -712,7 +1061,13 @@ const Frame = ({ frame, direction }: { frame: FrameDef; direction: 'forward' | '
                 </span>
               </div>
 
-              <h3 className="text-[28px] md:text-[34px] lg:text-[40px] font-semibold leading-[1.05] tracking-tight text-ink mb-5">
+              <h3
+                className="text-[28px] md:text-[34px] lg:text-[40px] font-semibold leading-[1.05] tracking-tight mb-5"
+                style={{
+                  color: 'rgba(255,248,232,0.96)',
+                  textShadow: '0 2px 8px rgba(0,0,0,0.6), 0 0 16px rgba(0,0,0,0.35)',
+                }}
+              >
                 {frame.headline}
               </h3>
 
@@ -732,7 +1087,8 @@ const Frame = ({ frame, direction }: { frame: FrameDef; direction: 'forward' | '
         <p
           className="absolute bottom-5 left-1/2 -translate-x-1/2 text-[11.5px] italic whitespace-nowrap"
           style={{
-            color: 'rgba(80,60,40,0.7)',
+            color: 'rgba(255,248,232,0.85)',
+            textShadow: '0 1px 3px rgba(0,0,0,0.6), 0 0 8px rgba(0,0,0,0.35)',
             opacity: revealed ? 1 : 0,
             transition: 'opacity 700ms ease 700ms',
           }}
@@ -746,9 +1102,22 @@ const Frame = ({ frame, direction }: { frame: FrameDef; direction: 'forward' | '
 
 // Inline receipt for mobile — same content as ReceiptOverlay but rendered in
 // document flow rather than absolute-positioned.
-const ReceiptInline = () => (
+const ReceiptInline = ({
+  variants,
+  variantIndex,
+}: {
+  variants?: Variant[];
+  variantIndex: number;
+}) => {
+  const activeVariant = variants?.[variantIndex];
+  const route = activeVariant?.receiptRoute ?? {
+    routedTo: '988 Lifeline',
+    statusLabel: 'Resource',
+    statusValue: 'Accepted',
+  };
+  return (
   <div
-    className="rounded-2xl p-4 shadow-md"
+    className="rounded-2xl p-4 shadow-md w-full"
     style={{
       background: 'rgba(252,246,234,0.96)',
       border: '1px solid rgba(180,150,100,0.32)',
@@ -766,8 +1135,14 @@ const ReceiptInline = () => (
       style={{ background: 'rgba(255,251,240,0.7)', border: '1px solid rgba(180,150,100,0.18)' }}
     >
       <ReceiptRow label="Event" value="Check-in completed" />
-      <ReceiptRow label="Routed to" value="988 Lifeline" />
-      <ReceiptRow label="Resource" value="Accepted" />
+      <div
+        key={`route-${variantIndex}`}
+        className="space-y-2"
+        style={{ animation: 'bf-fade-up 460ms cubic-bezier(0.16,1,0.3,1) 1200ms both' }}
+      >
+        <ReceiptRow label="Routed to" value={route.routedTo} />
+        <ReceiptRow label={route.statusLabel} value={route.statusValue} />
+      </div>
       <ReceiptRow label="Hash" value="0x7a3e…b91d" mono color={TEAL} />
     </div>
     <ul className="space-y-1 text-[11px]" style={{ color: 'rgba(70,50,30,0.85)' }}>
@@ -782,7 +1157,8 @@ const ReceiptInline = () => (
       <span className="text-[10px] font-bold tracking-[0.06em] text-ink">OSHA · ADA · HIPAA</span>
     </div>
   </div>
-);
+  );
+};
 
 // ──────────────────────────────────────────────────────────────────────────
 // MAIN — auto-playing slideshow shell. After the last frame, the user clicks
@@ -954,10 +1330,9 @@ const ProtocolStoryboard = () => {
         {FRAMES.map((f, i) => {
           const isActive = i === activeIndex;
           const isPast = i < activeIndex;
-          const isLast = i === total - 1;
           return (
             <div key={f.n} className="flex-1 h-[3px] rounded-full overflow-hidden bg-hair">
-              {isActive && !isLast ? (
+              {isActive ? (
                 <div
                   key={`bar-${activeIndex}-${paused ? 'p' : 'r'}`}
                   className="h-full bg-accent"
@@ -967,7 +1342,7 @@ const ProtocolStoryboard = () => {
                   }}
                 />
               ) : (
-                <div className="h-full bg-accent" style={{ width: isPast || isActive ? '100%' : '0%' }} />
+                <div className="h-full bg-accent" style={{ width: isPast ? '100%' : '0%' }} />
               )}
             </div>
           );
@@ -976,7 +1351,7 @@ const ProtocolStoryboard = () => {
 
       {/* ── FRAME STAGE ── */}
       <main className="relative flex-1 min-h-0 overflow-hidden">
-        <Frame key={frame.n} frame={frame} direction={direction} />
+        <Frame key={frame.n} frame={frame} direction={direction} paused={paused} />
       </main>
 
       {/* ── LIVE DEMO OVERLAY ── slides up from below over the walkthrough.
