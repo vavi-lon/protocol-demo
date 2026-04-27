@@ -144,32 +144,69 @@ const FRAMES: FrameDef[] = [
     duration: 17000,
     bodyPlacement: 'left',
     loopVariants: true,
-    silentVariants: true,
-    bubbles: [
-      {
-        speaker: 'you',
-        text: "Hey — I've noticed you've been quiet this week. You missed both standups. You okay?",
-        delay: 700,
-        annotations: [
-          'You stop — physical presence first',
-          'Distance kept — closeness without invasion',
-        ],
-      },
-      {
-        speaker: 'them',
-        text: "yeah, just tired. i'm fine.",
-        delay: 3000,
-        annotations: [
-          'Hand to chest — the silent sign',
-          "Words say fine. Body says otherwise. You don't walk away.",
-        ],
-      },
-    ],
-    // Variants exist solely to rotate the background image — no chat overrides,
-    // no caption. Bubbles arrays are intentionally empty.
+    bubbles: [],
+    // Each variant enacts one of the body card's 3 scripts.
+    // V1 = OPEN script. V2 = RELEASE PRESSURE script. V3 = OFFER OPTIONS script.
     variants: [
-      { label: 'Direct check-in', imagePath: '/images/protocol/frame-02-stay-direct.png',      bubbles: [] },
-      { label: 'No pressure',     imagePath: '/images/protocol/frame-02-stay-no-pressure.png', bubbles: [] },
+      {
+        label: 'Direct check-in',
+        imagePath: '/images/protocol/frame-02-stay-direct.png',
+        bubbles: [
+          {
+            speaker: 'you',
+            text: "Hey — I've noticed you've been quiet this week. You missed both standups. You okay?",
+            delay: 200,
+            annotations: [
+              'You stop — physical presence first',
+              'Distance kept — closeness without invasion',
+            ],
+          },
+          {
+            speaker: 'them',
+            text: "yeah, just tired. i'm fine.",
+            delay: 2400,
+            annotations: [
+              'Hand to chest — the silent sign',
+              "Words say fine. Body says otherwise. You don't walk away.",
+            ],
+          },
+        ],
+      },
+      {
+        label: 'No pressure',
+        imagePath: '/images/protocol/frame-02-stay-no-pressure.png',
+        bubbles: [
+          {
+            speaker: 'you',
+            text: "you don't have to explain anything right now. just here if you need it.",
+            delay: 200,
+            annotations: ['Release the pressure — make space, not silence'],
+          },
+          {
+            speaker: 'system',
+            text: "She nods. Doesn't speak.",
+            delay: 2400,
+          },
+        ],
+      },
+      {
+        label: 'Offer options',
+        imagePath: '/images/protocol/frame-02-stay-offer-options.png',
+        bubbles: [
+          {
+            speaker: 'you',
+            text: "coffee, walk, or quiet — what'd help most?",
+            delay: 200,
+            annotations: ['Concrete options — easier to pick than to invent'],
+          },
+          {
+            speaker: 'them',
+            text: '…a walk, maybe.',
+            delay: 2400,
+            annotations: ['She picks one. The choice itself eases.'],
+          },
+        ],
+      },
     ],
     body: (
       <div className="space-y-3.5">
@@ -234,6 +271,13 @@ const FRAMES: FrameDef[] = [
           { speaker: 'them', text: 'i think i need to talk to someone.', delay: 200 },
         ],
       },
+      {
+        label: 'Risk signal',
+        imagePath: '/images/protocol/frame-03-ask-risk-signal.png',
+        bubbles: [
+          { speaker: 'them', text: "i don't know if i can keep going.", delay: 200 },
+        ],
+      },
     ],
     body: (
       <div className="space-y-3">
@@ -249,7 +293,6 @@ const FRAMES: FrameDef[] = [
               <tr><td className="py-2 px-2.5 font-medium italic text-ink">"I just need a moment"</td><td className="py-2 px-2.5">"I'll check back in 30 minutes."</td></tr>
               <tr><td className="py-2 px-2.5 font-medium italic text-ink">"I'd like to talk to someone"</td><td className="py-2 px-2.5">Open Resource Map together.</td></tr>
               <tr><td className="py-2 px-2.5 font-medium italic text-ink">Signs of immediate risk</td><td className="py-2 px-2.5">"Let's call 988 together." Stay.</td></tr>
-              <tr><td className="py-2 px-2.5 font-medium italic text-ink">Refuses all support</td><td className="py-2 px-2.5">Document. Escalate today.</td></tr>
             </tbody>
           </table>
         </div>
@@ -291,6 +334,15 @@ const FRAMES: FrameDef[] = [
           { speaker: 'them', text: 'ok.',                                                              delay: 2200 },
         ],
         receiptRoute: { routedTo: 'Resource Map', statusLabel: 'EAP referral', statusValue: 'Pending' },
+      },
+      {
+        label: 'Risk signal',
+        imagePath: '/images/protocol/frame-04-connect-risk-signal.png',
+        bubbles: [
+          { speaker: 'you',    text: "let's call 988 together. i'll stay on the line.", delay: 200 },
+          { speaker: 'system', text: '988 connected · responder remained',              delay: 2400 },
+        ],
+        receiptRoute: { routedTo: '988 Lifeline', statusLabel: 'Responder', statusValue: 'Stayed on line' },
       },
     ],
     body: (
@@ -593,15 +645,36 @@ const VariantBubbles = ({ variant, indexOffset = 0 }: { variant: Variant; indexO
   );
 };
 
+// Computes the delay (ms) at which the route caption should fade in for a
+// given variant — i.e. AFTER the longest bubble has fully landed, and after
+// the receipt rows have finished morphing on receipt frames. Falls back to
+// 0 when there's nothing to wait for.
+const computeCaptionDelay = (
+  baseBubbles: Bubble[],
+  variantBubbles: Bubble[],
+  hasReceipt: boolean,
+): number => {
+  const maxBubbleDelay = Math.max(
+    0,
+    ...baseBubbles.map((b) => b.delay ?? 0),
+    ...variantBubbles.map((b) => b.delay ?? 0),
+  );
+  const bubbleTime = maxBubbleDelay + 500; // ChatMessage's opacity/translate transition
+  const receiptTime = hasReceipt ? 1200 + 460 : 0; // receipt row delay + duration
+  return Math.max(bubbleTime, receiptTime) + 250; // 250ms breathing room before caption
+};
+
 // "Route N of 3 · Soft retreat" chip — morphs whenever variantIndex changes.
 const RouteCaption = ({
   variantIndex,
   total,
   label,
+  delay = 0,
 }: {
   variantIndex: number;
   total: number;
   label: string;
+  delay?: number;
 }) => (
   <div
     key={variantIndex}
@@ -609,7 +682,7 @@ const RouteCaption = ({
     style={{
       background: 'rgba(252,246,234,0.92)',
       border: '1px solid rgba(180,150,100,0.32)',
-      animation: 'bf-fade-up 500ms cubic-bezier(0.16,1,0.3,1) both',
+      animation: `bf-fade-up 500ms cubic-bezier(0.16,1,0.3,1) ${delay}ms both`,
     }}
   >
     <span className="text-[9.5px] font-bold tracking-[0.14em] uppercase tabular-nums" style={{ color: TEAL }}>
@@ -661,6 +734,7 @@ const ChatColumn = ({
           variantIndex={variantIndex}
           total={variants.length}
           label={activeVariant.label}
+          delay={computeCaptionDelay(frame.bubbles, activeVariant.bubbles, frame.receipt ?? false)}
         />
       )}
     </div>
@@ -810,6 +884,7 @@ const ReceiptOverlay = ({
           variantIndex={variantIndex}
           total={variants.length}
           label={activeVariant.label}
+          delay={computeCaptionDelay([], activeVariant.bubbles, true)}
         />
       )}
     </div>
@@ -952,6 +1027,7 @@ const Frame = ({
                     variantIndex={variantIndex}
                     total={variants.length}
                     label={activeVariant.label}
+                    delay={computeCaptionDelay([], activeVariant.bubbles, true)}
                   />
                 </div>
               )}
@@ -974,6 +1050,7 @@ const Frame = ({
                     variantIndex={variantIndex}
                     total={variants.length}
                     label={activeVariant.label}
+                    delay={computeCaptionDelay(frame.bubbles, activeVariant.bubbles, frame.receipt ?? false)}
                   />
                 </div>
               )}
