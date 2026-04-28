@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { ReactNode } from 'react';
-import { AlertCircle, Shield, ArrowLeft, ArrowRight, Download, Play, Pause, RotateCcw, Check } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Play, Pause, RotateCcw, Check } from 'lucide-react';
 import ProtocolConversationSection from './ProtocolConversationSection';
 
 const TEAL = '#0A4AD6';
@@ -73,21 +72,50 @@ type FrameDef = {
    *  caption are not rendered. Frame's base bubbles render as usual. Used
    *  by Frames 1 + 2 where only the background image should rotate. */
   silentVariants?: boolean;
-  body: ReactNode;
   /** ms — how long this frame plays before auto-advancing */
   duration: number;
-  /** Which side of the screen the body card overlay sits on */
+  /** Which side of the screen the chat / receipt overlay sits on. The
+   *  opposite side now hosts only the step badge + headline (the body
+   *  card explainer was removed in the context-toggle restructure). */
   bodyPlacement: 'left' | 'right';
   /** When true, render the ReceiptOverlay panel instead of bubbles (used by Frame 4) */
   receipt?: boolean;
 };
 
 // ──────────────────────────────────────────────────────────────────────────
-// FRAMES — every line from the original ProtocolStepper preserved verbatim,
-// distributed across the 4 frames as overlays over each image.
+// CONTEXTS — three settings the user can toggle between at the top of the
+// walkthrough. Each context owns its own 4-frame array with tailored
+// dialogue, system signals, scene captions and image paths. The protocol
+// structure (4 steps, 3 variants per step where applicable) stays the same
+// across all three.
 // ──────────────────────────────────────────────────────────────────────────
 
-const FRAMES: FrameDef[] = [
+type ContextKey = 'work' | 'school' | 'home';
+
+type Context = {
+  key: ContextKey;
+  label: string;
+  /** Subject of the opening card — "A colleague" / "A student" / "A loved one". */
+  openingPerson: string;
+};
+
+const CONTEXTS: Context[] = [
+  { key: 'work',   label: 'At Work',   openingPerson: 'A colleague' },
+  { key: 'school', label: 'At School', openingPerson: 'A student'   },
+  { key: 'home',   label: 'At Home',   openingPerson: 'A loved one' },
+];
+
+// ──────────────────────────────────────────────────────────────────────────
+// FRAMES_BY_CONTEXT — frame data keyed by context. Image paths under
+// `school` and `sports` use prefixed filenames (e.g. school-frame-01-…);
+// if those files haven't been generated yet, FullBleedMedia silently falls
+// back to `frame.imagePath` (set to the canonical workplace image) so the
+// walkthrough never breaks visually. Drop the per-context image files in
+// to populate each context's visual track.
+// ──────────────────────────────────────────────────────────────────────────
+
+const FRAMES_BY_CONTEXT: Record<ContextKey, FrameDef[]> = {
+  work: [
   {
     n: 1,
     step: 'SEE',
@@ -108,29 +136,10 @@ const FRAMES: FrameDef[] = [
       { speaker: 'system', text: 'Them missed Thursday 10am standup',          delay: 3800 },
       { speaker: 'system', text: 'Them logged off Tuesday 2:14 PM',            delay: 4700 },
     ],
-    // Variants exist solely to rotate the background image — no chat overrides,
-    // no caption. Bubbles arrays are intentionally empty.
     variants: [
       { label: 'Withdrawal',       imagePath: '/images/protocol/frame-01-see-withdrawal.png',       bubbles: [] },
       { label: 'Behavioral shift', imagePath: '/images/protocol/frame-01-see-behavioral-shift.png', bubbles: [] },
     ],
-    body: (
-      <div className="space-y-4">
-        <p className="text-[14.5px] leading-relaxed text-ink">
-          Recognize signals — withdrawal, behavioral shift, distress, or the gesture.
-          Your obligation: respond within the hour. <span className="font-semibold">Do not wait for someone else.</span>
-        </p>
-        <div className="rounded-xl bg-bg-muted/70 p-3.5 border border-hair/60">
-          <h4 className="font-bold mb-2 flex items-center gap-1.5 text-ink text-[12.5px]">
-            <AlertCircle size={14} className="text-accent" /> Quick safety check
-          </h4>
-          <ul className="space-y-1.5 text-[12.5px]">
-            <li className="flex gap-2"><span className="text-ink font-bold">•</span><span>Immediate danger → <span className="font-semibold">911 first</span></span></li>
-            <li className="flex gap-2"><span className="text-ink font-bold">•</span><span>Safe and accessible → Proceed to <span className="font-semibold">STAY</span></span></li>
-          </ul>
-        </div>
-      </div>
-    ),
   },
   {
     n: 2,
@@ -208,28 +217,6 @@ const FRAMES: FrameDef[] = [
         ],
       },
     ],
-    body: (
-      <div className="space-y-3.5">
-        <p className="text-[14px] leading-relaxed text-ink">
-          Your presence communicates before your words. Use the structure, but keep your own language.
-        </p>
-        <div className="space-y-2">
-          {[
-            { label: 'OPEN',             text: '"I noticed something. I wanted to check in."' },
-            { label: 'RELEASE PRESSURE', text: '"You don\'t have to explain anything right now."' },
-            { label: 'OFFER OPTIONS',    text: '"What would help most?"' },
-          ].map((block, i) => (
-            <div key={i} className="border-l-2 border-accent pl-3 py-0.5">
-              <span className="block font-bold text-caption text-[10px] tracking-[0.14em] uppercase mb-0.5">{block.label}</span>
-              <span className="block text-ink font-medium text-[13.5px] leading-snug">{block.text}</span>
-            </div>
-          ))}
-        </div>
-        <p className="text-[11.5px] italic text-muted leading-snug">
-          Note: "These are not magic words. They are the structure. Keep the sequence."
-        </p>
-      </div>
-    ),
   },
   {
     n: 3,
@@ -279,28 +266,6 @@ const FRAMES: FrameDef[] = [
         ],
       },
     ],
-    body: (
-      <div className="space-y-3">
-        <div className="overflow-hidden rounded-xl border border-hair/60">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-hair/60 bg-bg-muted/40">
-                <th className="py-2 px-2.5 font-bold text-caption text-[9.5px] uppercase tracking-wider">Response</th>
-                <th className="py-2 px-2.5 font-bold text-caption text-[9.5px] uppercase tracking-wider">Your action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-hair/60 text-[11.5px]">
-              <tr><td className="py-2 px-2.5 font-medium italic text-ink">"I just need a moment"</td><td className="py-2 px-2.5">"I'll check back in 30 minutes."</td></tr>
-              <tr><td className="py-2 px-2.5 font-medium italic text-ink">"I'd like to talk to someone"</td><td className="py-2 px-2.5">Open Resource Map together.</td></tr>
-              <tr><td className="py-2 px-2.5 font-medium italic text-ink">Signs of immediate risk</td><td className="py-2 px-2.5">"Let's call 988 together." Stay.</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <p className="text-[11.5px] italic text-muted leading-snug">
-          Note: "Do not attempt to assess suicide risk. Do not ask clinical questions. Your job is recognition and routing — not evaluation."
-        </p>
-      </div>
-    ),
   },
   {
     n: 4,
@@ -313,7 +278,6 @@ const FRAMES: FrameDef[] = [
     sceneCaption: 'Tuesday, 9:51 AM · One protocol, three endings',
     duration: 17000,
     bodyPlacement: 'left',
-    receipt: true,
     bubbles: [],
     loopVariants: true,
     variants: [
@@ -345,39 +309,397 @@ const FRAMES: FrameDef[] = [
         receiptRoute: { routedTo: '988 Lifeline', statusLabel: 'Responder', statusValue: 'Stayed on line' },
       },
     ],
-    body: (
-      <div className="space-y-3.5">
-        <p className="text-[13.5px] leading-relaxed text-ink">
-          Log without PII/PHI: date, that a check-in occurred, routing offered, whether accepted.
-        </p>
-        <div className="rounded-xl border border-accent/20 bg-accent-light/30 p-3.5">
-          <h4 className="font-bold text-ink mb-2 flex items-center gap-1.5 text-[12px]">
-            <Shield size={14} className="text-accent" /> Non-negotiable data rules
-          </h4>
-          <ul className="space-y-1 text-[11.5px] leading-snug">
-            <li className="flex gap-1.5"><span className="text-accent font-bold shrink-0">/</span><span>Logs stored in <span className="font-semibold">SEPARATE system</span> from HR records — never in HRIS</span></li>
-            <li className="flex gap-1.5"><span className="text-accent font-bold shrink-0">/</span><span>Automatic <span className="font-semibold">90-day retention limit</span> — then purged</span></li>
-            <li className="flex gap-1.5"><span className="text-accent font-bold shrink-0">/</span><span>May <span className="font-semibold">NOT</span> be referenced in performance reviews, PIPs, or termination</span></li>
-            <li className="flex gap-1.5"><span className="text-accent font-bold shrink-0">/</span><span>Model data governance policy included in the deployment kit for your GC</span></li>
-          </ul>
-        </div>
-        <div>
-          <p className="text-[9.5px] font-bold tracking-[0.14em] uppercase text-caption mb-1.5">Take it with you</p>
-          <div className="flex flex-wrap gap-1.5">
-            {['Full Protocol — PDF', 'Pocket Card', 'Common-Areas Poster'].map((label) => (
-              <button
-                key={label}
-                className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10.5px] font-semibold border border-hair hover:border-accent hover:text-accent transition-colors text-ink bg-white"
-              >
-                <Download size={11} /> {label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    ),
   },
-];
+  ],
+  // ────────────────────────────────────────────────────────────────────────
+  // SCHOOL — teacher / student, between periods. Routes to school counselor
+  // for "Wants support" instead of EAP/Resource Map.
+  // ────────────────────────────────────────────────────────────────────────
+  school: [
+    {
+      n: 1,
+      step: 'SEE',
+      overline: 'STEP 01 · SEE',
+      headline: 'Notice without speaking.',
+      imagePath: '/images/protocol/school-frame-01-see.png',
+      imageAlt: 'A student at her desk, head lowered, withdrawn from the classroom around her.',
+      fallbackGradient: 'linear-gradient(135deg, #2a2c34 0%, #3f4452 50%, #5a6076 100%)',
+      sceneCaption: 'Wednesday, between periods · Before any words',
+      duration: 17000,
+      bodyPlacement: 'right',
+      loopVariants: true,
+      silentVariants: true,
+      bubbles: [
+        { speaker: 'system', text: "Quiet during today's discussion",   delay: 700 },
+        { speaker: 'system', text: 'Eyes off the page for a long beat', delay: 1700 },
+        { speaker: 'system', text: "Them missed Monday's class",        delay: 2900 },
+        { speaker: 'system', text: "Them missed Wednesday's class",     delay: 3800 },
+        { speaker: 'system', text: 'Skipped lunch in the cafeteria',    delay: 4700 },
+      ],
+      variants: [
+        { label: 'Withdrawal',       imagePath: '/images/protocol/school-frame-01-see-withdrawal.png',       bubbles: [] },
+        { label: 'Behavioral shift', imagePath: '/images/protocol/school-frame-01-see-behavioral-shift.png', bubbles: [] },
+      ],
+    },
+    {
+      n: 2,
+      step: 'STAY',
+      overline: 'STEP 02 · STAY',
+      headline: 'Close the distance.',
+      imagePath: '/images/protocol/school-frame-02-stay.png',
+      imageAlt: 'A teacher stands beside a seated student who has pressed her hand to her chest — the silent sign.',
+      fallbackGradient: 'linear-gradient(135deg, #1f2932 0%, #354253 50%, #4f5d72 100%)',
+      sceneCaption: 'Wednesday, after class · The first 30 seconds',
+      duration: 17000,
+      bodyPlacement: 'left',
+      loopVariants: true,
+      bubbles: [],
+      variants: [
+        {
+          label: 'Direct check-in',
+          imagePath: '/images/protocol/school-frame-02-stay-direct.png',
+          bubbles: [
+            {
+              speaker: 'you',
+              text: "Hey — I've noticed you've been quiet this week. You missed both classes. You okay?",
+              delay: 200,
+              annotations: [
+                'You stop — physical presence first',
+                'Distance kept — closeness without invasion',
+              ],
+            },
+            {
+              speaker: 'them',
+              text: "yeah, just tired. i'm fine.",
+              delay: 2400,
+              annotations: [
+                'Hand to chest — the silent sign',
+                "Words say fine. Body says otherwise. You don't walk away.",
+              ],
+            },
+          ],
+        },
+        {
+          label: 'No pressure',
+          imagePath: '/images/protocol/school-frame-02-stay-no-pressure.png',
+          bubbles: [
+            {
+              speaker: 'you',
+              text: "you don't have to talk about anything right now. just here if you need me.",
+              delay: 200,
+              annotations: ['Release the pressure — make space, not silence'],
+            },
+            {
+              speaker: 'system',
+              text: "She nods. Doesn't speak.",
+              delay: 2400,
+            },
+          ],
+        },
+        {
+          label: 'Offer options',
+          imagePath: '/images/protocol/school-frame-02-stay-offer-options.png',
+          bubbles: [
+            {
+              speaker: 'you',
+              text: "study hall, walk outside, or just sit here — what'd help?",
+              delay: 200,
+              annotations: ['Concrete options — easier to pick than to invent'],
+            },
+            {
+              speaker: 'them',
+              text: '…a walk, maybe.',
+              delay: 2400,
+              annotations: ['She picks one. The choice itself eases.'],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      n: 3,
+      step: 'ASK',
+      overline: 'STEP 03 · ASK',
+      headline: 'Ask the real question.',
+      imagePath: '/images/protocol/school-frame-03-ask.png',
+      imageAlt: 'The teacher and student speaking face-to-face — the teacher listening, not solving.',
+      fallbackGradient: 'linear-gradient(135deg, #1f2630 0%, #364452 50%, #56657a 100%)',
+      sceneCaption: 'Wednesday, end of period · Three answers, three routes',
+      duration: 17000,
+      bodyPlacement: 'right',
+      loopVariants: true,
+      bubbles: [
+        {
+          speaker: 'you',
+          text: 'no pressure — what would help most right now?',
+          delay: 700,
+          annotations: ["Open question — listen, don't evaluate"],
+        },
+      ],
+      variants: [
+        {
+          label: 'Soft retreat',
+          imagePath: '/images/protocol/school-frame-03-ask-soft-retreat.png',
+          bubbles: [
+            { speaker: 'them', text: "honestly i just need a quiet hour. i'll be ok.", delay: 1500 },
+          ],
+        },
+        {
+          label: 'Wants support',
+          imagePath: '/images/protocol/school-frame-03-ask-wants-support.png',
+          bubbles: [
+            { speaker: 'them', text: 'i think i need to talk to the counselor.', delay: 200 },
+          ],
+        },
+        {
+          label: 'Risk signal',
+          imagePath: '/images/protocol/school-frame-03-ask-risk-signal.png',
+          bubbles: [
+            { speaker: 'them', text: "i don't know if i can keep going.", delay: 200 },
+          ],
+        },
+      ],
+    },
+    {
+      n: 4,
+      step: 'CONNECT',
+      overline: 'STEP 04 · CONNECT',
+      headline: 'Close the loop — three ways.',
+      imagePath: '/images/protocol/school-frame-04-connect.png',
+      imageAlt: 'The teacher stands with the student; a phone is on the desk. The line is open.',
+      fallbackGradient: 'linear-gradient(135deg, #1c2530 0%, #34465c 50%, #5b7090 100%)',
+      sceneCaption: "Wednesday, in the counselor's office · One protocol, three endings",
+      duration: 17000,
+      bodyPlacement: 'left',
+      bubbles: [],
+      loopVariants: true,
+      variants: [
+        {
+          label: 'Soft retreat',
+          imagePath: '/images/protocol/school-frame-04-connect-soft-retreat.png',
+          bubbles: [
+            { speaker: 'you',    text: "okay. i'll find you in study hall — no pressure.", delay: 200 },
+            { speaker: 'system', text: 'reminder set · 4th period ✓',                       delay: 1500 },
+          ],
+          receiptRoute: { routedTo: 'Self-managed', statusLabel: 'Follow-up', statusValue: '4th period today' },
+        },
+        {
+          label: 'Wants support',
+          imagePath: '/images/protocol/school-frame-04-connect-wants-support.png',
+          bubbles: [
+            { speaker: 'you',  text: "let's walk to the counselor's office together. i'll wait while you talk.", delay: 200 },
+            { speaker: 'them', text: 'ok.',                                                                       delay: 2200 },
+          ],
+          receiptRoute: { routedTo: 'School counselor', statusLabel: 'Referral', statusValue: 'In progress' },
+        },
+        {
+          label: 'Risk signal',
+          imagePath: '/images/protocol/school-frame-04-connect-risk-signal.png',
+          bubbles: [
+            { speaker: 'you',    text: "let's call 988 together. i'll stay with you.", delay: 200 },
+            { speaker: 'system', text: '988 connected · counselor on the way',          delay: 2400 },
+          ],
+          receiptRoute: { routedTo: '988 Lifeline', statusLabel: 'Counselor', statusValue: 'En route' },
+        },
+      ],
+    },
+  ],
+  // ────────────────────────────────────────────────────────────────────────
+  // HOME — household setting. The "you" is a partner / parent / family
+  // member; "them" is a loved one. Routes to a personal therapist for
+  // "Wants support" (the closest household analogue of EAP / counselor /
+  // team psychologist).
+  // ────────────────────────────────────────────────────────────────────────
+  home: [
+    {
+      n: 1,
+      step: 'SEE',
+      overline: 'STEP 01 · SEE',
+      headline: 'Notice without speaking.',
+      imagePath: '/images/protocol/home-frame-01-see.png',
+      imageAlt: 'A loved one in the kitchen, head lowered, withdrawn from the household around them.',
+      fallbackGradient: 'linear-gradient(135deg, #2a2c34 0%, #3f4452 50%, #5a6076 100%)',
+      sceneCaption: 'Sunday evening, the kitchen · Before any words',
+      duration: 17000,
+      bodyPlacement: 'right',
+      loopVariants: true,
+      silentVariants: true,
+      bubbles: [
+        { speaker: 'system', text: 'Posture withdraws — shoulders close inward', delay: 700 },
+        { speaker: 'system', text: 'Eyes off the room for a long beat',           delay: 1700 },
+        { speaker: 'system', text: 'Skipped Sunday dinner',                        delay: 2900 },
+        { speaker: 'system', text: 'Skipped Tuesday dinner',                       delay: 3800 },
+        { speaker: 'system', text: 'Bedroom door stayed shut all afternoon',       delay: 4700 },
+      ],
+      variants: [
+        { label: 'Withdrawal',       imagePath: '/images/protocol/home-frame-01-see-withdrawal.png',       bubbles: [] },
+        { label: 'Behavioral shift', imagePath: '/images/protocol/home-frame-01-see-behavioral-shift.png', bubbles: [] },
+      ],
+    },
+    {
+      n: 2,
+      step: 'STAY',
+      overline: 'STEP 02 · STAY',
+      headline: 'Close the distance.',
+      imagePath: '/images/protocol/home-frame-02-stay.png',
+      imageAlt: 'You sit beside a loved one at the kitchen table — they have pressed a hand to their chest, the silent sign.',
+      fallbackGradient: 'linear-gradient(135deg, #1f2932 0%, #354253 50%, #4f5d72 100%)',
+      sceneCaption: 'Sunday evening, after dinner · The first 30 seconds',
+      duration: 17000,
+      bodyPlacement: 'left',
+      loopVariants: true,
+      bubbles: [],
+      variants: [
+        {
+          label: 'Direct check-in',
+          imagePath: '/images/protocol/home-frame-02-stay-direct.png',
+          bubbles: [
+            {
+              speaker: 'you',
+              text: "Hey — I've noticed you've been quiet this week. You missed dinner twice. You okay?",
+              delay: 200,
+              annotations: [
+                'You sit down — physical presence first',
+                'Distance kept — closeness without invasion',
+              ],
+            },
+            {
+              speaker: 'them',
+              text: "yeah, just tired. i'm fine.",
+              delay: 2400,
+              annotations: [
+                'Hand to chest — the silent sign',
+                "Words say fine. Body says otherwise. You don't walk away.",
+              ],
+            },
+          ],
+        },
+        {
+          label: 'No pressure',
+          imagePath: '/images/protocol/home-frame-02-stay-no-pressure.png',
+          bubbles: [
+            {
+              speaker: 'you',
+              text: "you don't have to get into it tonight. just here if you need me.",
+              delay: 200,
+              annotations: ['Release the pressure — make space, not silence'],
+            },
+            {
+              speaker: 'system',
+              text: "She nods. Doesn't speak.",
+              delay: 2400,
+            },
+          ],
+        },
+        {
+          label: 'Offer options',
+          imagePath: '/images/protocol/home-frame-02-stay-offer-options.png',
+          bubbles: [
+            {
+              speaker: 'you',
+              text: "tea, a walk around the block, or just sitting — what'd help?",
+              delay: 200,
+              annotations: ['Concrete options — easier to pick than to invent'],
+            },
+            {
+              speaker: 'them',
+              text: '…a walk, maybe.',
+              delay: 2400,
+              annotations: ['She picks one. The choice itself eases.'],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      n: 3,
+      step: 'ASK',
+      overline: 'STEP 03 · ASK',
+      headline: 'Ask the real question.',
+      imagePath: '/images/protocol/home-frame-03-ask.png',
+      imageAlt: 'You and a loved one on the couch, face-to-face — you listening, not solving.',
+      fallbackGradient: 'linear-gradient(135deg, #1f2630 0%, #364452 50%, #56657a 100%)',
+      sceneCaption: 'Sunday evening, on the couch · Three answers, three routes',
+      duration: 17000,
+      bodyPlacement: 'right',
+      loopVariants: true,
+      bubbles: [
+        {
+          speaker: 'you',
+          text: 'no pressure — what would help most right now?',
+          delay: 700,
+          annotations: ["Open question — listen, don't evaluate"],
+        },
+      ],
+      variants: [
+        {
+          label: 'Soft retreat',
+          imagePath: '/images/protocol/home-frame-03-ask-soft-retreat.png',
+          bubbles: [
+            { speaker: 'them', text: "honestly i just need a quiet hour. i'll be ok.", delay: 1500 },
+          ],
+        },
+        {
+          label: 'Wants support',
+          imagePath: '/images/protocol/home-frame-03-ask-wants-support.png',
+          bubbles: [
+            { speaker: 'them', text: 'i think i need to talk to my therapist.', delay: 200 },
+          ],
+        },
+        {
+          label: 'Risk signal',
+          imagePath: '/images/protocol/home-frame-03-ask-risk-signal.png',
+          bubbles: [
+            { speaker: 'them', text: "i don't know if i can keep going.", delay: 200 },
+          ],
+        },
+      ],
+    },
+    {
+      n: 4,
+      step: 'CONNECT',
+      overline: 'STEP 04 · CONNECT',
+      headline: 'Close the loop — three ways.',
+      imagePath: '/images/protocol/home-frame-04-connect.png',
+      imageAlt: 'You sit with a loved one in the kitchen; a phone is on the counter. The line is open.',
+      fallbackGradient: 'linear-gradient(135deg, #1c2530 0%, #34465c 50%, #5b7090 100%)',
+      sceneCaption: 'Sunday evening, by the kitchen counter · One protocol, three endings',
+      duration: 17000,
+      bodyPlacement: 'left',
+      bubbles: [],
+      loopVariants: true,
+      variants: [
+        {
+          label: 'Soft retreat',
+          imagePath: '/images/protocol/home-frame-04-connect-soft-retreat.png',
+          bubbles: [
+            { speaker: 'you',    text: "okay. i'll come knock at 7 — no pressure.", delay: 200 },
+            { speaker: 'system', text: 'reminder set · 7 PM tonight ✓',              delay: 1500 },
+          ],
+          receiptRoute: { routedTo: 'Self-managed', statusLabel: 'Follow-up', statusValue: '7 PM tonight' },
+        },
+        {
+          label: 'Wants support',
+          imagePath: '/images/protocol/home-frame-04-connect-wants-support.png',
+          bubbles: [
+            { speaker: 'you',  text: "let's call your therapist together. i'll wait while you talk.", delay: 200 },
+            { speaker: 'them', text: 'ok.',                                                            delay: 2200 },
+          ],
+          receiptRoute: { routedTo: 'Therapist', statusLabel: 'Referral', statusValue: 'In progress' },
+        },
+        {
+          label: 'Risk signal',
+          imagePath: '/images/protocol/home-frame-04-connect-risk-signal.png',
+          bubbles: [
+            { speaker: 'you',    text: "let's call 988 together. i'll stay with you.", delay: 200 },
+            { speaker: 'system', text: '988 connected · staying with you',              delay: 2400 },
+          ],
+          receiptRoute: { routedTo: '988 Lifeline', statusLabel: 'Stayed with', statusValue: 'You' },
+        },
+      ],
+    },
+  ],
+};
 
 // ──────────────────────────────────────────────────────────────────────────
 // FULL-BLEED MEDIA — fills entire frame area; image now, video-ready.
@@ -892,6 +1214,95 @@ const ReceiptOverlay = ({
 };
 
 // ──────────────────────────────────────────────────────────────────────────
+// INTRO CARD — opening title (before Step 1) and closing title (after Step 4).
+// Plays as a brief, full-screen narrative bookend so the walkthrough reads
+// like a short film: setup → four-minute scene → takeaway.
+// ──────────────────────────────────────────────────────────────────────────
+
+const IntroCard = ({
+  variant,
+  context,
+  onComplete,
+  duration,
+}: {
+  variant: 'opening' | 'closing';
+  context: Context;
+  onComplete: () => void;
+  duration: number;
+}) => {
+  const [revealed, setRevealed] = useState(false);
+
+  useEffect(() => {
+    const r = setTimeout(() => setRevealed(true), 60);
+    const c = setTimeout(onComplete, duration);
+    return () => {
+      clearTimeout(r);
+      clearTimeout(c);
+    };
+  }, [onComplete, duration]);
+
+  return (
+    <div
+      className="absolute inset-0 flex flex-col items-center justify-center px-6 md:px-12 text-center"
+      style={{
+        background:
+          'radial-gradient(ellipse 90% 70% at 50% 35%, #fbf4ea 0%, #f1e7d4 55%, #e6d9c2 100%)',
+      }}
+    >
+      {/* Faint paper-grain — same recipe used on the Live Demo overlay so the
+          two bookend surfaces feel like the same physical material. */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        aria-hidden
+        style={{
+          backgroundImage:
+            "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='0.55'/></svg>\")",
+          opacity: 0.16,
+          mixBlendMode: 'multiply',
+        }}
+      />
+
+      <div
+        className="relative z-10 max-w-[840px] flex flex-col items-center gap-5"
+        style={{
+          opacity: revealed ? 1 : 0,
+          transform: revealed ? 'translateY(0)' : 'translateY(12px)',
+          transition: 'opacity 700ms ease, transform 700ms cubic-bezier(0.16,1,0.3,1)',
+        }}
+      >
+        {variant === 'opening' ? (
+          <>
+            <p className="text-[10px] md:text-[11px] font-bold tracking-[0.22em] uppercase text-caption">
+              The Protocol · {context.label}
+            </p>
+            <h2 className="text-[26px] md:text-[40px] lg:text-[52px] font-semibold leading-[1.08] tracking-tight text-ink">
+              {context.openingPerson} is struggling.
+              <br className="hidden md:block" /> You're the one who notices.
+            </h2>
+            <p className="text-[14px] md:text-[16px] italic" style={{ color: 'rgba(80,55,30,0.7)' }}>
+              Four minutes. Four steps.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-[10px] md:text-[11px] font-bold tracking-[0.22em] uppercase text-caption">
+              What the protocol teaches
+            </p>
+            <h2 className="text-[26px] md:text-[40px] lg:text-[52px] font-semibold leading-[1.08] tracking-tight text-ink">
+              One protocol.
+              <br className="hidden md:block" /> Four steps. Three valid endings.
+            </h2>
+            <p className="text-[14px] md:text-[16px] italic" style={{ color: 'rgba(80,55,30,0.7)' }}>
+              None of them walk away.
+            </p>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ──────────────────────────────────────────────────────────────────────────
 // FRAME — single visible panel: full-bleed image with all overlays on top
 // ──────────────────────────────────────────────────────────────────────────
 
@@ -1057,16 +1468,6 @@ const Frame = ({
             </div>
           )}
 
-          {/* Body card */}
-          <div
-            className={`rounded-2xl p-4 bg-white border border-hair ${revealed ? 'bf-body-card' : ''}`}
-            style={{
-              boxShadow: '0 4px 14px -8px rgba(11,11,15,0.10), 0 1px 2px rgba(11,11,15,0.05)',
-            }}
-          >
-            {frame.body}
-          </div>
-
           {/* Scene caption */}
           <p
             className="text-center text-[11px] italic pb-2"
@@ -1139,7 +1540,7 @@ const Frame = ({
               </div>
 
               <h3
-                className="text-[28px] md:text-[34px] lg:text-[40px] font-semibold leading-[1.05] tracking-tight mb-5"
+                className="text-[28px] md:text-[34px] lg:text-[40px] font-semibold leading-[1.05] tracking-tight"
                 style={{
                   color: 'rgba(255,248,232,0.96)',
                   textShadow: '0 2px 8px rgba(0,0,0,0.6), 0 0 16px rgba(0,0,0,0.35)',
@@ -1147,15 +1548,6 @@ const Frame = ({
               >
                 {frame.headline}
               </h3>
-
-              <div
-                className={`rounded-2xl p-4 md:p-5 bg-white border border-hair ${revealed ? 'bf-body-card' : ''}`}
-                style={{
-                  boxShadow: '0 8px 24px -10px rgba(11,11,15,0.12), 0 1px 3px rgba(11,11,15,0.05)',
-                }}
-              >
-                {frame.body}
-              </div>
             </div>
           </div>
         </div>
@@ -1243,13 +1635,30 @@ const ReceiptInline = ({
 // ──────────────────────────────────────────────────────────────────────────
 
 const ProtocolStoryboard = () => {
+  const [activeContext, setActiveContext] = useState<ContextKey>('work');
+  // Narrative phase: 'opening' = title card, 'playing' = the four-step
+  // walkthrough, 'closing' = takeaway card before the Live Demo.
+  const [phase, setPhase] = useState<'opening' | 'playing' | 'closing'>('opening');
   const [activeIndex, setActiveIndex] = useState(0);
   const [direction, setDirection] = useState<'forward' | 'backward'>('forward');
   const [showStepper, setShowStepper] = useState(false);
   const [paused, setPaused] = useState(false);
 
-  const total = FRAMES.length;
-  const frame = FRAMES[activeIndex];
+  const frames = FRAMES_BY_CONTEXT[activeContext];
+  const total = frames.length;
+  const frame = frames[activeIndex];
+  const context = CONTEXTS.find((c) => c.key === activeContext)!;
+
+  // Switch context — resets to first step, clears pause, replays the
+  // opening card so the new setting starts as its own short film.
+  const switchContext = (key: ContextKey) => {
+    if (key === activeContext) return;
+    setActiveContext(key);
+    setActiveIndex(0);
+    setDirection('forward');
+    setPaused(false);
+    setPhase('opening');
+  };
 
   // Lock body scroll for the entire walkthrough lifetime
   useEffect(() => {
@@ -1279,8 +1688,8 @@ const ProtocolStoryboard = () => {
       setDirection('forward');
       setActiveIndex(activeIndex + 1);
     } else {
-      // Last frame's Next opens the step-ladder directly
-      setShowStepper(true);
+      // Last frame's Next plays the closing card before the Live Demo.
+      setPhase('closing');
     }
   };
   const goPrev = () => {
@@ -1299,6 +1708,7 @@ const ProtocolStoryboard = () => {
     setActiveIndex(0);
     setDirection('forward');
     setPaused(false);
+    setPhase('opening');
   };
 
   // Keyboard: ←/→ advance, Space pauses
@@ -1402,9 +1812,30 @@ const ProtocolStoryboard = () => {
         </div>
       </header>
 
+      {/* ── CONTEXT TOGGLE ── three pills, first active by default. Switching
+          smoothly resets the walkthrough to step 1 of the chosen setting. */}
+      <div className="relative z-30 shrink-0 flex items-center justify-center gap-2 px-3 sm:px-5 md:px-8 py-2.5 bg-white/85 backdrop-blur-md border-b border-hair">
+        {CONTEXTS.map((ctx) => {
+          const isActive = ctx.key === activeContext;
+          return (
+            <button
+              key={ctx.key}
+              onClick={() => switchContext(ctx.key)}
+              className={`px-4 py-1.5 rounded-full text-[12px] font-semibold transition-all duration-300 ${
+                isActive
+                  ? 'bg-accent text-white shadow-sm'
+                  : 'bg-white text-muted border border-hair hover:border-accent hover:text-ink'
+              }`}
+            >
+              {ctx.label}
+            </button>
+          );
+        })}
+      </div>
+
       {/* ── SEGMENTED PROGRESS BAR ── */}
       <div className="relative z-30 shrink-0 flex items-center gap-1 px-3 sm:px-5 md:px-8 py-2 bg-white/85 backdrop-blur-md border-b border-hair">
-        {FRAMES.map((f, i) => {
+        {frames.map((f, i) => {
           const isActive = i === activeIndex;
           const isPast = i < activeIndex;
           return (
@@ -1428,7 +1859,25 @@ const ProtocolStoryboard = () => {
 
       {/* ── FRAME STAGE ── */}
       <main className="relative flex-1 min-h-0 overflow-hidden">
-        <Frame key={frame.n} frame={frame} direction={direction} paused={paused} />
+        {phase === 'opening' ? (
+          <IntroCard
+            key={`opening-${activeContext}`}
+            variant="opening"
+            context={context}
+            duration={3500}
+            onComplete={() => setPhase('playing')}
+          />
+        ) : phase === 'closing' ? (
+          <IntroCard
+            key="closing"
+            variant="closing"
+            context={context}
+            duration={2800}
+            onComplete={() => setShowStepper(true)}
+          />
+        ) : (
+          <Frame key={`${activeContext}-${frame.n}`} frame={frame} direction={direction} paused={paused} />
+        )}
       </main>
 
       {/* ── LIVE DEMO OVERLAY ── slides up from below over the walkthrough.
@@ -1504,7 +1953,7 @@ const ProtocolStoryboard = () => {
         </button>
 
         <div className="flex items-center gap-2">
-          {FRAMES.map((f, i) => {
+          {frames.map((f, i) => {
             const isActive = i === activeIndex;
             const isVisited = i < activeIndex;
             return (
@@ -1544,7 +1993,7 @@ const ProtocolStoryboard = () => {
           </button>
         ) : (
           <button
-            onClick={() => setShowStepper(true)}
+            onClick={() => setPhase('closing')}
             className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-[12px] sm:text-[13px] font-semibold bg-accent text-white hover:opacity-90 transition-opacity shadow-md shrink-0"
           >
             <span>Finish</span>
